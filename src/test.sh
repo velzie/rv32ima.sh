@@ -305,16 +305,37 @@ readshort() {
     b2=$(readn 1 | tohex)
     echosafe $((0x$b2$b1))
 }
+readstring() {
+    while true; do
+        char=$(readn 1 | tohex)
+        if [ "$char" = "00" ]; then
+            break
+        fi
+        echosafe "$char" | fromhex
+    done
+}
 eslice() {
     local start=$2
     local size=$3
-    echosafe "${1:$((start*2)):$((size*2))}"
+    if [ -n "$size" ]; then
+        echosafe "${1:$((start*2)):$((size*2))}"
+    else
+        echosafe "${1:$((start*2))}"
+    fi
 }
 sliceint() {
     eslice $1 $2 4 | fromhex | readint
 }
 sliceshort() {
     eslice $1 $2 2 | fromhex | readshort
+}
+parsesectheader() {
+    sh_name=$(sliceint $1 0)
+    sh_type=$(sliceint $1 4)
+    sh_flags=$(sliceint $1 8)
+    sh_addr=$(sliceint $1 12)
+    sh_offset=$(sliceint $1 16)
+    sh_size=$(sliceint $1 20)
 }
 parseelf() {
     if (( 0x$(readhex 4) != 0x7f454c46 )); then
@@ -371,14 +392,25 @@ parseelf() {
     sh_table=$(eslice $elfbody $e_shoff $((e_shnum * e_shentsize)))
     # take the `shstrndx`th section header
     sh_strtab=$(eslice $sh_table $(((e_shstrndx) * e_shentsize)) $e_shentsize)
-    sh_strtab_name=$(sliceint $sh_strtab 0)
-    sh_strtab_type=$(sliceint $sh_strtab 4)
-    sh_strtab_flags=$(sliceint $sh_strtab 8)
-    sh_strtab_addr=$(sliceint $sh_strtab 12)
-    sh_strtab_offset=$(sliceint $sh_strtab 16)
-    sh_strtab_size=$(sliceint $sh_strtab 20)
+    parsesectheader $sh_strtab
     # string table
-    sh_strs=$(eslice $elfbody $sh_strtab_offset $sh_strtab_size)
+    sh_strs=$(eslice $elfbody $sh_offset $sh_size)
+
+    # loop through section headers until we find .text
+    for ((i=0; i<e_shnum; i++)); do
+        sh=$(eslice $sh_table $((i * e_shentsize)) $e_shentsize)
+        parsesectheader $sh
+        name=$(eslice $sh_strs $sh_name | fromhex | readstring)
+        echo "section $i: $name"
+        if [[ $name == ".text" ]]; then
+            echo "Found .text section"
+
+            while parsei; do
+               :
+            done < <(eslice $elfbody $sh_offset $sh_size | fromhex)
+            break
+        fi
+    done
 
 }
 parseelf < $1
