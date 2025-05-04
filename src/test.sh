@@ -10,7 +10,20 @@ fmtreg() {
         2) echo "sp";;
         3) echo "gp";;
         4) echo "tp";;
+        5) echo "t0";;
+        6) echo "t1";;
+        7) echo "t2";;
         8) echo "s0/fp";;
+        9) echo "s1";;
+        10) echo "a0";;
+        11) echo "a1";;
+        12) echo "a2";;
+        13) echo "a3";;
+        14) echo "a4";;
+        15) echo "a5";;
+        16) echo "a6";;
+        17) echo "a7";;
+        18) echo "s2";;
         *) echo "unknown register $1";;
     esac
 }
@@ -25,6 +38,19 @@ fmtifunct() {
         2) echo "slti";;
         3) echo "sltiu";;
     esac
+}
+fmtsfunct() {
+    case $1 in
+        0) echo "sb";;
+        1) echo "sh";;
+        2) echo "sw";;
+    esac
+}
+sextendimm() {
+    if [ $((imm >> 11)) = 1 ]; then
+        imm=$((imm ^ 2#111111111111))
+        imm=$((-(imm + 1)))
+    fi
 }
 
 # Register ABI Name Description Saver
@@ -47,7 +73,12 @@ fmtifunct() {
 # f18-27 fs2-11 FP saved registers Callee
 # f28-31 ft8-11 FP temporaries Caller
 
-# rv32 instruction format
+
+xt() {
+    local size
+    size=$(($2 - $1))
+    echo "$(((int >> $1) & ((1 << (size+1))-1)))"
+}
 parsei() {
     local b1 b2 b3 b4 hex
 
@@ -60,7 +91,7 @@ parsei() {
 
     int=$((0x$hex))
 
-    op=$((    int & 2#00000000000000000000000001111111))
+    op=$(xt 0 6)
 
 
     case $op in
@@ -79,17 +110,29 @@ parsei() {
         19)
         # I-type (immediate)
         # | 31–20       | 19–15 | 14–12 | 11–7  | 6–0   |
-        # | imm   | rs1   | funct3| rd    | opcode|
-        rd=$(((int >> 7) & ((1 << 6)-1)))
-        funct3=$(((int >> 12) & ((1 << 4)-1)))
-        rs1=$(((int >> 15) & ((1 << 6)-1)))
-        imm=$(((int >> 20) & ((1 << 12)-1)))
-        if [ $((imm >> 11)) = 1 ]; then
-            imm=$((imm ^ 2#111111111111))
-            imm=$((-(imm + 1)))
-        fi
+        # | imm[11:0]   | rs1   | funct3| rd    | opcode|
+
+        rd=$(xt 7 11)
+        funct3=$(xt 12 14)
+        rs1=$(xt 15 19)
+        imm=$(xt 20 31)
+        sextendimm
+
         # echo "TYPE I $op $rd $funct3 $rs1 $imm"
         echo "$(fmtifunct $funct3) $(fmtreg $rd),$(fmtreg $rs1),$imm"
+        ;;
+        35)
+        # S-type (Store)
+        # | 31–25    | 24–20 | 19–15 | 14–12 | 11–7    | 6–0   |
+        # | imm[11:5]| rs2   | rs1   | funct3| imm[4:0]| opcode|
+        imm1=$(xt 7 11)
+        funct3=$(xt 12 14)
+        rs1=$(xt 15 19)
+        rs2=$(xt 20 24)
+        imm2=$(xt 25 31)
+        imm=$((imm1 + (imm2 << 5)))
+        sextendimm
+        echo "$(fmtsfunct $funct3) $(fmtreg $rs2),$imm($(fmtreg $rs1))"
         ;;
 
         *) echo "unknown opcode $op"
