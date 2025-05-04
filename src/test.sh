@@ -13,7 +13,7 @@ fmtreg() {
         5) echo "t0";;
         6) echo "t1";;
         7) echo "t2";;
-        8) echo "s0/fp";;
+        8) echo "s0";;
         9) echo "s1";;
         10) echo "a0";;
         11) echo "a1";;
@@ -25,38 +25,6 @@ fmtreg() {
         17) echo "a7";;
         18) echo "s2";;
         *) echo "unknown register $1";;
-    esac
-}
-fmtifunct() {
-    case $op in
-        19)
-        case $funct3 in
-            0) echo "addi";;
-            4) echo "xori";;
-            6) echo "ori";;
-            7) echo "andi";;
-            1) echo "slli";;
-            5) echo "srli/srai";;
-            2) echo "slti";;
-            3) echo "sltiu";;
-        esac
-        ;;
-        3) # load instructions
-        case $funct3 in
-            0) echo "lb";;
-            1) echo "lh";;
-            2) echo "lw";;
-            4) echo "lbu";;
-            5) echo "lhu";;
-        esac
-        ;;
-    esac
-}
-fmtsfunct() {
-    case $funct3 in
-        0) echo "sb";;
-        1) echo "sh";;
-        2) echo "sw";;
     esac
 }
 sextendimm() {
@@ -165,7 +133,7 @@ parsei() {
         esac
         echo "$inst $(fmtreg $rd),$(fmtreg $rs1),$(fmtreg $rs2)"
         ;;
-        19|3)
+        19|3|103|115)
         # I-type (immediate)
         # | 31–20       | 19–15 | 14–12 | 11–7  | 6–0   |
         # | imm[11:0]   | rs1   | funct3| rd    | opcode|
@@ -176,8 +144,47 @@ parsei() {
         imm=$(xt 20 31)
         sextendimm
 
+        case $op in
+            19)
+            case $funct3 in
+                0) inst="addi";;
+                4) inst="xori";;
+                6) inst="ori";;
+                7) inst="andi";;
+                1) inst="slli";;
+                5)
+                case $funct7 in
+                    0) inst="srli";;
+                    32) inst="srai";;
+                esac
+                ;;
+                2) inst="slti";;
+                3) inst="sltiu";;
+            esac
+            ;;
+            3) # load instructions
+            case $funct3 in
+                0) inst="lb";;
+                1) inst="lh";;
+                2) inst="lw";;
+                4) inst="lbu";;
+                5) inst="lhu";;
+            esac
+            ;;
+            103)
+            case $funct3 in
+                0) inst="jalr";;
+            esac
+            ;;
+            115)
+            case $imm in
+                0) inst="ecall";;
+                1) inst="ebreak";;
+            esac
+            ;;
+        esac
         # echo "TYPE I $op $rd $funct3 $rs1 $imm"
-        echo "$(fmtifunct) $(fmtreg $rd),$(fmtreg $rs1),$imm"
+        echo "$inst $(fmtreg $rd),$(fmtreg $rs1),$imm"
         ;;
         35)
         # S-type (Store)
@@ -190,7 +197,19 @@ parsei() {
         imm2=$(xt 25 31)
         imm=$((imm1 + (imm2 << 5)))
         sextendimm
-        echo "$(fmtsfunct) $(fmtreg $rs2),$imm($(fmtreg $rs1))"
+        case $funct3 in
+            0)
+            inst="sb"
+            ;;
+            1)
+            inst="sh"
+            ;;
+            2)
+            inst="sw"
+            ;;
+            *) echo "unknown S-type funct3 $funct3"
+        esac
+        echo "$inst $(fmtreg $rs2),$imm($(fmtreg $rs1))"
         ;;
         99)
         # B-type (Branch)
@@ -243,14 +262,127 @@ parsei() {
         sextendimm
         echo "jal $(fmtreg $rd),$imm"
         ;;
-
+        55|23)
+        # U-Type (Upper Immediate)
+        # | 31–12         | 11–7  | 6–0   |
+        # | imm[31:12]    | rd    | opcode|
+        rd=$(xt 7 11)
+        imm=$((
+            ($(xt 12 31) << 12)
+        ))
+        sextendimm
+        case $op in
+            55)
+            inst="lui"
+            ;;
+            23)
+            inst="auipc"
+            ;;
+            *) echo "unknown Utype opcode $op"
+        esac
+        echo "$inst $(fmtreg $rd),$imm"
+        ;;
         *) echo "unknown opcode $op"
     esac
 }
 
-while parsei; do
-    :
-done < test.bin
+# while parsei; do
+#     :
+# done < $1
+
+readchar() {
+    echosafe $((0x$(readn 1 | tohex)))
+}
+readint() {
+    b1=$(readn 1 | tohex)
+    b2=$(readn 1 | tohex)
+    b3=$(readn 1 | tohex)
+    b4=$(readn 1 | tohex)
+    echosafe $((0x$b4$b3$b2$b1))
+}
+readshort() {
+    b1=$(readn 1 | tohex)
+    b2=$(readn 1 | tohex)
+    echosafe $((0x$b2$b1))
+}
+eslice() {
+    local start=$2
+    local size=$3
+    echosafe "${1:$((start*2)):$((size*2))}"
+}
+sliceint() {
+    eslice $1 $2 4 | fromhex | readint
+}
+sliceshort() {
+    eslice $1 $2 2 | fromhex | readshort
+}
+parseelf() {
+    if (( 0x$(readhex 4) != 0x7f454c46 )); then
+        echo "Not an ELF file"
+        return 1
+    fi
+    if (( $(readchar) != 0x01 )); then
+        echo "Not 32 bit"
+        return 1
+    fi
+    if (( $(readchar) != 0x01 )); then
+        echo "Not little endian"
+        return 1
+    fi
+
+    eatn 1 # ELF header version
+    eatn 1 # OS ABI
+    eatn 8 # ELF header padding
+    type=$(readshort)
+    echo "ELF type $type"
+    if (( $(readshort) != 0xf3 )); then
+        echo "Not RISC-V"
+        return 1
+    fi
+    # readn 20 | tohex
+    elfversion=$(readint)
+    echo "ELF version $elfversion"
+    e_entry=$(readint)
+    e_phoff=$(readint)
+    e_shoff=$(readint)
+    echo "Entry point $e_entry"
+    echo "Program header offset $e_phoff"
+    echo "Section header offset $e_shoff"
+    flags=$(readint)
+    echo "Flags $flags"
+    headersize=$(readshort)
+    echo "Header Size $headersize"
+    e_phentsize=$(readshort)
+    echo "Program header entry size $e_phentsize"
+    e_phnum=$(readshort)
+    echo "Program header count $e_phnum"
+    e_shentsize=$(readshort)
+    echo "Section header entry size $e_shentsize"
+    e_shnum=$(readshort)
+    echo "Section header count $e_shnum"
+    e_shstrndx=$(readshort)
+    echo "Section header string table index $e_shstrndx"
+
+    # eat the remainder of the data
+    elfbody=$(tohex)
+    # pad the header so the offsets match
+    elfbody="$(repeat $headersize 00)$elfbody"
+    # section header table
+    sh_table=$(eslice $elfbody $e_shoff $((e_shnum * e_shentsize)))
+    # take the `shstrndx`th section header
+    sh_strtab=$(eslice $sh_table $(((e_shstrndx) * e_shentsize)) $e_shentsize)
+    sh_strtab_name=$(sliceint $sh_strtab 0)
+    sh_strtab_type=$(sliceint $sh_strtab 4)
+    sh_strtab_flags=$(sliceint $sh_strtab 8)
+    sh_strtab_addr=$(sliceint $sh_strtab 12)
+    sh_strtab_offset=$(sliceint $sh_strtab 16)
+    sh_strtab_size=$(sliceint $sh_strtab 20)
+    # string table
+    sh_strs=$(eslice $elfbody $sh_strtab_offset $sh_strtab_size)
+
+}
+parseelf < $1
+
 # a=$(readn 4 < test.bin | tohex)
 #     echo "$a"
 # echo $(((((0x$a)) & 0xff)))
