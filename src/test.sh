@@ -229,6 +229,20 @@ parsei() {
         esac
         echo "$inst $(fmtreg $rs1),$(fmtreg $rs2),$imm"
         ;;
+        111)
+        # J-Type
+        # | 31 | 30–21 | 20 | 19–12 | 11–7  | 6–0   |
+        # | imm[20] | imm[10:1] | imm[11] | imm[19:12] | rd | opcode |
+        rd=$(xt 7 11)
+        imm=$((
+            ($(xt 12 19) << 12) |
+            ($(xt 20) << 11) |
+            ($(xt 21 30) << 1) |
+            ($(xt 31) << 20)
+        ))
+        sextendimm
+        echo "jal $(fmtreg $rd),$imm"
+        ;;
 
         *) echo "unknown opcode $op"
     esac
