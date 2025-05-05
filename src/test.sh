@@ -64,6 +64,24 @@ xt() {
         echo "$(((int >> $1) & 1))"
     fi
 }
+
+declare -a MEMORY
+declare -a REGS
+REGS=()
+MEMORY=()
+PC=0
+MEMSIZE=0x100000
+reset() {
+    # zero mem and regs
+    for ((i=0; i<32; i++)); do
+        REGS[$i]=0
+    done
+    for ((i=0; i<$MEMSIZE; i++)); do
+        MEMORY[$i]=0
+    done
+}
+reset
+
 parsei() {
     local b1 b2 b3 b4 hex
 
@@ -336,7 +354,12 @@ parsesectheader() {
     sh_addr=$(sliceint $1 12)
     sh_offset=$(sliceint $1 16)
     sh_size=$(sliceint $1 20)
+    sh_link=$(sliceint $1 24)
+    sh_info=$(sliceint $1 28)
+    sh_addralign=$(sliceint $1 32)
+    sh_entsize=$(sliceint $1 36)
 }
+
 parseelf() {
     if (( 0x$(readhex 4) != 0x7f454c46 )); then
         echo "Not an ELF file"
@@ -402,18 +425,66 @@ parseelf() {
         parsesectheader $sh
         name=$(eslice $sh_strs $sh_name | fromhex | readstring)
         echo "section $i: $name"
-        if [[ $name == ".text" ]]; then
-            echo "Found .text section"
+        # if [[ $name == ".text" ]]; then
+        #     echo "Found .text section"
 
-            while parsei; do
-               :
-            done < <(eslice $elfbody $sh_offset $sh_size | fromhex)
-            break
-        fi
+        #     while parsei; do
+        #        :
+        #     done < <(eslice $elfbody $sh_offset $sh_size | fromhex)
+        #     break
+        # fi
     done
 
+    ph_table=$(eslice $elfbody $e_phoff $((e_phnum * e_phentsize)))
+    for ((i=0; i<e_phnum; i++)); do
+        ph=$(eslice $ph_table $((i * e_phentsize)) $e_phentsize)
+
+        p_type=$(sliceint $ph 0)
+        p_offset=$(sliceint $ph 4)
+        p_vaddr=$(sliceint $ph 8)
+        p_paddr=$(sliceint $ph 12)
+        p_filesz=$(sliceint $ph 16)
+        p_memsz=$(sliceint $ph 20)
+        p_flags=$(sliceint $ph 24)
+        p_align=$(sliceint $ph 28)
+
+
+        case $p_type in
+            1) # PT_LOAD
+                # wherever i map must be a multiple of p_align
+                echo "type $p_type offset $p_offset addr $p_vaddr/$p_paddr filesz $p_filesz memsz $p_memsz flags $p_flags align $p_align"
+
+                MEMORY[0]=1
+                for ((j=0; j<p_memsz; j++)); do
+                    offs=$((p_vaddr+j))
+                    if ((j > p_filesz)); then
+                        MEMORY[$offs]=0
+                    else
+                        MEMORY[$offs]=$((0x$(eslice $elfbody $((p_offset+j)) 1)))
+                    fi
+                done
+                echo "loaded PT_LOAD into memory"
+            ;;
+            1879048195) # PT_RISCV_ATTRIBUTES
+                # load this later
+                :
+            ;;
+            *)
+            echo "unknown p_type $p_type, ignoring"
+            ;;
+        esac
+    done
+
+
+}
+dumpmem() {
+    local i
+    for ((i=0; i<$MEMSIZE; i++)); do
+        printf "%02x" "${MEMORY[$i]}"
+    done
 }
 parseelf < $1
+dumpmem | fromhex > dump
 
 # a=$(readn 4 < test.bin | tohex)
 #     echo "$a"
