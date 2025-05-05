@@ -71,6 +71,8 @@ REGS=()
 MEMORY=()
 PC=0
 MEMSIZE=2000000
+INTMAX=$((2**31))
+RAM_IMAGE_OFFSET=0
 reset() {
     # zero mem and regs
     for ((i=0; i<32; i++)); do
@@ -97,24 +99,44 @@ memwritebyte() {
 
     MEMORY[offs]=$(((MEMORY[offs] & mask) | (new << (align*8)) ))
 }
+memreadword() {
+    b1=$(memreadbyte $1)
+    b2=$(memreadbyte $((1+$1)))
+    b3=$(memreadbyte $((2+$1)))
+    b4=$(memreadbyte $((3+$1)))
 
+    echo $((b4<<24 | b3<<16 | b2<<8 | b1))
+}
+memwritehalfword() {
+    local offs=$1
+    local new=$2
 
+    memwritebyte $offs $((new >> 8))
+    memwritebyte $((1+$offs)) $((new))
+}
+memwritehalfword() {
+    local offs=$1
+    local new=$2
+
+    memwritebyte $offs $((new >> 8))
+    memwritebyte $((1+$offs)) $((new))
+}
+memwriteword() {
+    local offs=$1
+    local new=$2
+
+    memwritebyte $offs $((new >> 24))
+    memwritebyte $((1+$offs)) $((new >> 16))
+    memwritebyte $((2+$offs)) $((new >> 8))
+    memwritebyte $((3+$offs)) $((new))
+}
 echo "filling"
 reset
 echo "filled"
 
-parsei() {
-    local b1 b2 b3 b4 hex
+memreadword 0
 
-    b1=$(readn 1 | tohex)
-    b2=$(readn 1 | tohex)
-    b3=$(readn 1 | tohex)
-    b4=$(readn 1 | tohex)
-    hex="$b4$b3$b2$b1"
-    if [ ${#hex} != 8 ]; then return 1; fi;
-
-    int=$((0x$hex))
-
+disasm() {
     op=$(xt 0 6)
 
 
@@ -325,229 +347,115 @@ parsei() {
     esac
 }
 
-
 step() {
-    local b1 b2 b3 b4 hex
 
-    b1=$(readn 1 | tohex)
-    b2=$(readn 1 | tohex)
-    b3=$(readn 1 | tohex)
-    b4=$(readn 1 | tohex)
-    hex="$b4$b3$b2$b1"
-    if [ ${#hex} != 8 ]; then return 1; fi;
+    if ((PC % 4 != 0)); then
+        echo "PC not aligned"
+    fi
+    int=$(memreadword $PC)
 
-    int=$((0x$hex))
+    echo -en "$int: "
+    disasm $int
 
-    op=$(xt 0 6)
+    local rval=0
+    local rdid=$(((int >> 7) & 0x1f))
 
+    local sum=$((REGS[rs1] + imm))
+    rval=$((((((sum + INTMAX) % (INTMAX * 2)) + (INTMAX * 2)) % (INTMAX * 2)) - (INTMAX)))
 
-    case $op in
-        51)
-        # R-type (register)
-        # | 31–25 | 24–20 | 19–15 | 14–12 | 11–7  | 6–0   |
-        # | funct7| rs2   | rs1   | funct3| rd    | opcode|
-        rd=$(xt 7 11)
-        funct3=$(xt 12 14)
-        rs1=$(xt 15 19)
-        rs2=$(xt 20 24)
-        funct7=$(xt 25 31)
+    opcode=$((int & 0x7f))
+    echo "$PC"
+    case $opcode in
+        $((0x37))) # LUI
+            # U type
+            # (rd = imm << 12)
+            # since it's already 12 bytes up in the instruction we don't need to shift it again
+            rval=$((int & 0xfffff000))
+            ;;
+        $((0x3f))) # AUIPC
+            # U type
+            # (rd = pc + imm << 12)
+            rval=$((PC + (int & 0xfffff000)))
+            ;;
+        $((0x6f))) # JAL
+            # J type
+            # (rd = pc + 4; pc += imm)
+            imm=$(( ((int & 0x80000000) >> 11) | ( (int & 0x7fe00000) >> 20) | ((int & 0x00100000) >> 9) | (int & 0x000ff000) ))
+            sextendimm
+            rval=$((PC + 4))
+            PC=$((PC + imm - 4))
+            ;;
+        $((0x67))) # JALR
+            # I type
+            # (rd = pc + 4; pc = rs1 + imm)
+            sextendimm
+            # rval=$((PC + 4))
+            # PC=$((REGS[rs1] + imm))
+            ;;
+        $((0x63))) # BRANCH
+            # B type
+            imm=$(( ((int & 0xf00)>>7) | ((int & 0x7e000000)>>20) | ((int & 0x80) << 4) | ((int >> 31)<<12) ))
+            # max value for a relative jump in B type is 4096 so it has to be sign extended to that
+            if (( imm & 0x1000 )); then imm=$((imm | 0xffffffffffffe000)); fi
+            rs1=$(((int >> 15) & 0x1f))
+            rs2=$(((int >> 20) & 0x1f))
+            rs1val=$((REGS[rs1]))
+            rs2val=$((REGS[rs2]))
 
-        case $funct3 in
-            0)
-            case $funct7 in
-                0)
-                inst="add"
-                REGS[$rd]=$((REGS[$rs1] + REGS[$rs2]))
-                ;;
-                32)
-                inst="sub"
-                REGS[$rd]=$((REGS[$rs1] - REGS[$rs2]))
-                ;;
-            esac
-            ;;
-            4)
-            inst="xor"
-            ;;
-            6)
-            inst="or"
-            ;;
-            7)
-            inst="and"
-            ;;
-            1)
-            inst="sll"
-            ;;
-            5)
-            case $funct7 in
-                0x00)
-                inst="srl"
-                ;;
-                0x20)
-                inst="sra"
-                ;;
-            esac
-            ;;
-            2)
-            inst="slt"
-            ;;
-            3)
-            inst="sltu"
-            ;;
-            *) echo "UNKNOWN WHAT"
-        esac
-        echo "$inst $(fmtreg $rd),$(fmtreg $rs1),$(fmtreg $rs2)"
-        ;;
-        19|3|103|115)
-        # I-type (immediate)
-        # | 31–20       | 19–15 | 14–12 | 11–7  | 6–0   |
-        # | imm[11:0]   | rs1   | funct3| rd    | opcode|
-
-        rd=$(xt 7 11)
-        funct3=$(xt 12 14)
-        rs1=$(xt 15 19)
-        imm=$(xt 20 31)
-        sextendimm
-
-        case $op in
-            19)
+            jumpto=$((PC + imm - 4))
+            rdid=0
+            funct3=$(((int >> 12) & 0x7))
             case $funct3 in
-                0) inst="addi";;
-                4) inst="xori";;
-                6) inst="ori";;
-                7) inst="andi";;
-                1) inst="slli";;
-                5)
-                case $funct7 in
-                    0) inst="srli";;
-                    32) inst="srai";;
+                # BGE,
+                $((0x0))) if [ $rs1val -eq $rs2val ]; then PC=$jumpto; fi ;;
+                $((0x1))) if [ $rs1val -ne $rs2val ]; then PC=$jumpto; fi ;;
+                $((0x4))) if [ $rs1val -lt $rs2val ]; then PC=$jumpto; fi ;;
+                $((0x5))) if [ $rs1val -ge $rs2val ]; then PC=$jumpto; fi ;;
+                $((0x6))) if [ $rs1val -lt $rs2val ]; then PC=$jumpto; fi ;;
+                $((0x7))) if [ $rs1val -ge $rs2val ]; then PC=$jumpto; fi ;;
+                *) trap=3;;
+            esac
+            ;;
+        $((0x03))) # LOAD
+            rs1=$(((int >> 15) & 0x1f))
+            rs1val=$((REGS[rs1]))
+            imm=$((int >> 20))
+            sextendimm
+            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
+            if ((rsval > MEMSIZE - 4)); then
+                echo "poked out of bounds. uart?"
+            else
+                funct3=$(((int >> 12) & 0x7))
+                case $funct3 in
+                    $((0x0)))
+                        # load byte with sign extension
+                        rval=$(memreadbyte $rsval)
+                        ;;
+                    $((0x1)))
+                        # load halfword with sign extension
+                        rval=$(memreadhalfword $rsval)
+                        ;;
+                    $((0x2)))
+                        # load word
+                        rval=$(memreadword $rsval)
+                        ;;
+                    $((0x4)))
+                        # load byte
+                        rval=$(memreadbyte $rsval)
+                        ;;
+                    $((0x5)))
+                        # load halfword without sign extension
+                        rval=$(memreadhalfword $rsval)
+                        ;;
+                    *) trap=3;;
                 esac
-                ;;
-                2) inst="slti";;
-                3) inst="sltiu";;
-            esac
+            fi
+
             ;;
-            3) # load instructions
-            case $funct3 in
-                0) inst="lb";;
-                1) inst="lh";;
-                2) inst="lw";;
-                4) inst="lbu";;
-                5) inst="lhu";;
-            esac
-            ;;
-            103)
-            case $funct3 in
-                0) inst="jalr";;
-            esac
-            ;;
-            115)
-            case $imm in
-                0) inst="ecall";;
-                1) inst="ebreak";;
-            esac
-            ;;
-        esac
-        # echo "TYPE I $op $rd $funct3 $rs1 $imm"
-        echo "$inst $(fmtreg $rd),$(fmtreg $rs1),$imm"
-        ;;
-        35)
-        # S-type (Store)
-        # | 31–25    | 24–20 | 19–15 | 14–12 | 11–7    | 6–0   |
-        # | imm[11:5]| rs2   | rs1   | funct3| imm[4:0]| opcode|
-        imm1=$(xt 7 11)
-        funct3=$(xt 12 14)
-        rs1=$(xt 15 19)
-        rs2=$(xt 20 24)
-        imm2=$(xt 25 31)
-        imm=$((imm1 + (imm2 << 5)))
-        sextendimm
-        case $funct3 in
-            0)
-            inst="sb"
-            ;;
-            1)
-            inst="sh"
-            ;;
-            2)
-            inst="sw"
-            ;;
-            *) echo "unknown S-type funct3 $funct3"
-        esac
-        echo "$inst $(fmtreg $rs2),$imm($(fmtreg $rs1))"
-        ;;
-        99)
-        # B-type (Branch)
-        # | 31 | 30–25 | 24–20 | 19–15 | 14–12 | 11 | 10–8 | 7 | 6–0   |
-        # | imm[12] | imm[10:5] | rs2 | rs1 | funct3 | imm[4:1] | imm[11] | opcode |
-        funct3=$(xt 12 14)
-        rs1=$(xt 15 19)
-        rs2=$(xt 20 24)
-        imm=$((
-            ($(xt 7) << 11) |
-            ($(xt 31) << 12) |
-            ($(xt 8 11) << 1) |
-            ($(xt 25 30) << 5)
-        ))
-        sextendimm
-        case $funct3 in
-            0)
-            inst="beq"
-            ;;
-            1)
-            inst="bne"
-            ;;
-            4)
-            inst="blt"
-            ;;
-            5)
-            inst="bge"
-            ;;
-            6)
-            inst="bltu"
-            ;;
-            7)
-            inst="bgeu"
-            ;;
-            *) echo "unknown Btype funct3 $funct3"
-        esac
-        echo "$inst $(fmtreg $rs1),$(fmtreg $rs2),$imm"
-        ;;
-        111)
-        # J-Type
-        # | 31 | 30–21 | 20 | 19–12 | 11–7  | 6–0   |
-        # | imm[20] | imm[10:1] | imm[11] | imm[19:12] | rd | opcode |
-        rd=$(xt 7 11)
-        imm=$((
-            ($(xt 12 19) << 12) |
-            ($(xt 20) << 11) |
-            ($(xt 21 30) << 1) |
-            ($(xt 31) << 20)
-        ))
-        sextendimm
-        echo "jal $(fmtreg $rd),$imm"
-        ;;
-        55|23)
-        # U-Type (Upper Immediate)
-        # | 31–12         | 11–7  | 6–0   |
-        # | imm[31:12]    | rd    | opcode|
-        rd=$(xt 7 11)
-        imm=$((
-            $(xt 12 31) << 12
-        ))
-        sextendimm
-        case $op in
-            55)
-            inst="lui"
-            ;;
-            23)
-            inst="auipc"
-            ;;
-            *) echo "unknown Utype opcode $op"
-        esac
-        echo "$inst $(fmtreg $rd),$imm"
-        ;;
-        *) echo "unknown opcode $op"
+        *) echo "unknown opcode $opcode"
     esac
+
+    PC=$((PC + 4))
 }
 # while parsei; do
 #     :
@@ -652,6 +560,8 @@ parseelf() {
     e_shstrndx=$(readshort)
     echo "Section header string table index $e_shstrndx"
 
+    PC=$e_entry
+
     # eat the remainder of the data
     elfbody=$(tohex)
     # pad the header so the offsets match
@@ -665,20 +575,20 @@ parseelf() {
     sh_strs=$(eslice $elfbody $sh_offset $sh_size)
 
     # loop through section headers until we find .text
-    for ((i=0; i<e_shnum; i++)); do
-        sh=$(eslice $sh_table $((i * e_shentsize)) $e_shentsize)
-        parsesectheader $sh
-        name=$(eslice $sh_strs $sh_name | fromhex | readstring)
-        echo "section $i: $name"
-        # if [[ $name == ".text" ]]; then
-        #     echo "Found .text section"
+    # for ((i=0; i<e_shnum; i++)); do
+    #     sh=$(eslice $sh_table $((i * e_shentsize)) $e_shentsize)
+    #     parsesectheader $sh
+    #     name=$(eslice $sh_strs $sh_name | fromhex | readstring)
+    #     echo "section $i: $name"
+    #     # if [[ $name == ".text" ]]; then
+    #     #     echo "Found .text section"
 
-        #     while parsei; do
-        #        :
-        #     done < <(eslice $elfbody $sh_offset $sh_size | fromhex)
-        #     break
-        # fi
-    done
+    #     #     while parsei; do
+    #     #        :
+    #     #     done < <(eslice $elfbody $sh_offset $sh_size | fromhex)
+    #     #     break
+    #     # fi
+    # done
 
     ph_table=$(eslice $elfbody $e_phoff $((e_phnum * e_phentsize)))
     for ((i=0; i<e_phnum; i++)); do
@@ -729,6 +639,9 @@ dumpmem() {
     # done
 }
 parseelf < $1
+while true; do
+    step
+done
 dumpmem | fromhex > dump
 
 
