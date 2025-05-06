@@ -566,6 +566,21 @@ step() {
                 echo "ziscr"
             elif ((funct3 == 0)); then
                 echo "ecall"
+                echo "syscall id is ${REGS[17]}"
+                echo "syscall arguments 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
+
+                case ${REGS[17]} in
+                    64)
+                        echo "write called"
+                        ;;
+                    93)
+                        echo "exit called! exit code ${REGS[10]}"
+                        exit 0
+                        ;;
+                    *)
+                        echo "unknown syscall $syscall_id"
+                        ;;
+                esac
             else
                 trap=3
             fi
