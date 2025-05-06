@@ -90,7 +90,7 @@ reset() {
         MEMORY[i]=0
     done
 
-    echo "initialized $MEMSIZE bytes to 0"
+    # echo "initialized $MEMSIZE bytes to 0"
 }
 
 init() {
@@ -538,16 +538,31 @@ step() {
         REGS[rdid]=$rval
     fi
 
-    # echo "a0 ${REGS[10]} a2 ${REGS[12]} a5 ${REGS[15]} s0 ${REGS[8]}"
-
 
     PC=$((PC + 4))
     # echo "-end of frame-"
+
+    dumpstate
+}
+dumpstate() {
+    pc_offset=$((PC - RAM_IMAGE_OFFSET))
+    ir=0
+    printf 'PC: %08x ' $PC
+    if ((pc_offset >=0 )) && ((pc_offset < (MEMSIZE - 3))); then
+        ir=$(memreadword $((pc_offset)))
+        ir=$((ir & 0xffffffff))
+        printf '[0x%08x] ' $ir
+    else
+        printf '[xxxxxxxxxx] '
+    fi
+    printf 'Z:%08x ra:%08x sp:%08x gp:%08x tp:%08x t0:%08x t1:%08x t2:%08x s0:%08x s1:%08x a0:%08x a1:%08x a2:%08x a3:%08x a4:%08x a5:%08x ' ${REGS[0]} ${REGS[1]} ${REGS[2]} ${REGS[3]} ${REGS[4]} ${REGS[5]} ${REGS[6]} ${REGS[7]} ${REGS[8]} ${REGS[9]} ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}
+    printf 'a6:%08x a7:%08x s2:%08x s3:%08x s4:%08x s5:%08x s6:%08x s7:%08x s8:%08x s9:%08x s10:%08x s11:%08x t3:%08x t4:%08x t5:%08x t6:%08x\n' ${REGS[16]} ${REGS[17]} ${REGS[18]} ${REGS[19]} ${REGS[20]} ${REGS[21]} ${REGS[22]} ${REGS[23]} ${REGS[24]} ${REGS[25]} ${REGS[26]} ${REGS[27]} ${REGS[28]} ${REGS[29]} ${REGS[30]} ${REGS[31]}
+    # echo "a0 ${REGS[10]} a2 ${REGS[12]} a5 ${REGS[15]} s0 ${REGS[8]}"
 }
 
 loadblob() {
 
-echo "starting blob load"
+# echo "starting blob load"
 i=0
     while read int; do
         MEMORY[i]=$((int))
@@ -560,5 +575,5 @@ i=0
 #     # echo "$i ${content:i:2}"
 #      memwritebyte $((i/2)) $(( "0x${content:i:2}" ))
 #    done
-   echo "blob loaded"
+   # echo "blob loaded"
 }

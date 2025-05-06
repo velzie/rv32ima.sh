@@ -1,7 +1,7 @@
 #shellcheck shell=ksh
 export LC_ALL=C
 
-MEMSIZE=8000000
+MEMSIZE=2000000
 
 . src/util-pure.sh
 . src/fmt.sh
