@@ -1,7 +1,7 @@
 #shellcheck shell=ksh
 export LC_ALL=C
 
-MEMSIZE=2000000
+MEMSIZE=8000000
 
 . src/util-pure.sh
 . src/fmt.sh
@@ -23,7 +23,7 @@ dodump() {
 # parseelf < $1
 
 init 0 100000
-loadblob < $1
+loadblob $1
 
 while true; do
     step

@@ -27,6 +27,7 @@ csr_write() {
     case $csrno in
         $((0x136)))
             printf "%d" $val
+            echo
             ;;
         $((0x137)))
             printf "%08x" $val
@@ -86,7 +87,7 @@ reset() {
         REGS[i]=0
     done
     for ((i=0; i<$((MEMSIZE/4)); i++)); do
-        MEMORY[i]="0"
+        MEMORY[i]=0
     done
 
     echo "initialized $MEMSIZE bytes to 0"
@@ -545,10 +546,19 @@ step() {
 }
 
 loadblob() {
-   content=$(tohex)
 
-   for ((i=0; i<${#content}; i+=2)); do
-    # echo "$i ${content:i:2}"
-     memwritebyte $((i/2)) $(( "0x${content:i:2}" ))
-   done
+echo "starting blob load"
+i=0
+    while read int; do
+        MEMORY[i]=$((int))
+        i=$((i + 1))
+    done < <(od -t d4 -An -v -w4 $1)
+#    content=$(readint)
+#    echo "loaded hex"
+
+#    for ((i=0; i<${#content}; i+=2)); do
+#     # echo "$i ${content:i:2}"
+#      memwritebyte $((i/2)) $(( "0x${content:i:2}" ))
+#    done
+   echo "blob loaded"
 }
