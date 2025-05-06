@@ -20,7 +20,11 @@ dodump() {
     dumpmem | fromhex > dump
 }
 
-parseelf < $1
+# parseelf < $1
+
+init 0 100000
+loadblob < $1
+
 while true; do
     step
 done

@@ -5,7 +5,49 @@ REGS=()
 MEMORY=()
 PC=0
 INTMAX=$((2**31))
-RAM_IMAGE_OFFSET=1000000
+RAM_IMAGE_OFFSET=2147483648
+USERMODE=0
+
+
+csr_read() {
+    local csrno=$1
+
+
+    # echo "csr read $csrno"
+}
+
+csr_write() {
+    local csrno=$1
+    local val=$2
+
+    case $csrno in
+        $((0x136)))
+            printf "%d" $val
+            ;;
+        $((0x137)))
+            printf "%08x" $val
+            ;;
+        $((0x138)))
+            # echo "WRITING STRING at $val"
+            offs=$((val - RAM_IMAGE_OFFSET))
+            while true; do
+                byte=$(memreadbyte $offs)
+                # echo "btye $byte"
+                if ((byte == 0)); then
+                    break
+                fi
+                printf "%02x" $byte | fromhex
+                offs=$((offs+1))
+            done
+            ;;
+        $((0x139)))
+            printf "PRINTED CHAR %c" $val
+            ;;
+    esac
+
+    # echo "csr write $csrno $val"
+}
+
 reset() {
     # zero mem and regs
     for ((i=0; i<32; i++)); do
@@ -16,6 +58,29 @@ reset() {
     done
 
     echo "initialized $MEMSIZE bytes to 0"
+}
+
+init() {
+    local pc=$1
+    local dtb_ptr=$2
+
+    REGS[11]=$dtb_ptr
+    PC=$RAM_IMAGE_OFFSET
+    CYCLEH=0
+    CYCLEL=0
+    MSTATUS=0
+    TIMERH=0
+    TIMERL=0
+    TIMERMATCHH=0
+    TIMERMATCHL=0
+    MSCRATCH=0
+    MTVEC=0
+    MIE=0
+    MIP=0
+    MEPC=0
+    MTVAL=0
+    MCAUSE=0
+    EXTRAFLAGS=0
 }
 
 memreadbyte() {
@@ -99,6 +164,10 @@ rv32_unsigned_lt() {
 
     return $((x_upper < y_upper));
 }
+diasm() {
+    printf "%08x" $int | sed 's/../& /g' | awk '{for(i=4;i>0;i--) printf $i}' | xxd -r -p > t
+    riscv32-unknown-linux-gnu-objdump -D -b binary -M no-aliases -m riscv:rv32 t | grep -P '^\s*[0-9a-f]+:\s+[0-9a-f]+\s+' | sed -E 's/^\s*[0-9a-f]+:\s+[0-9a-f]+\s+//'   # echo -en "$int: "
+}
 
 step() {
 
@@ -106,13 +175,10 @@ step() {
     if ((PC % 4 != 0)); then
         echo "PC not aligned"
     fi
-    int=$(memreadword $PC)
-
-    printf "%08x" $int | sed 's/../& /g' | awk '{for(i=4;i>0;i--) printf $i}' | xxd -r -p > t
-    riscv32-unknown-linux-gnu-objdump -D -b binary -M no-aliases -m riscv:rv32 t | grep -P '^\s*[0-9a-f]+:\s+[0-9a-f]+\s+' | sed -E 's/^\s*[0-9a-f]+:\s+[0-9a-f]+\s+//'   # echo -en "$int: "
+    int=$(memreadword $((PC-RAM_IMAGE_OFFSET)))
 
     # printf "%08x" $int
-    # disasm $int
+    # diasm $int
 
     local rval=0
     local rdid=$(((int >> 7) & 0x1f))
@@ -131,7 +197,7 @@ step() {
             # since it's already 12 bytes up in the instruction we don't need to shift it again
             rval=$((int & 0xfffff000))
             ;;
-        $((0x3f))) # AUIPC
+        $((0x17))) # AUIPC
             # U type
             # (rd = pc + imm << 12)
             rval=$((PC + (int & 0xfffff000)))
@@ -195,7 +261,7 @@ step() {
             imm=$((int >> 20))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
             # echo "LW rsval: $rsval read $(memreadword $rsval)"
             # memreadword $rsval
             if ((rsval > MEMSIZE - 4)); then
@@ -237,7 +303,7 @@ step() {
             imm=$(( ( ( int >> 7 ) & 0x1f ) | ( ( int & 0xfe000000 ) >> 20 ) ))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
             rdid=0
             # echo "SW rsval: $rsval write $rs2val"
             if ((rsval > MEMSIZE - 4)); then
@@ -305,7 +371,7 @@ step() {
                     3)  # sltu/sltiu
                         # same thing except unsigned/zero extended
                         # todo
-                        if ((rs1val < rs2val)); then
+                        if rv32_unsigned_lt rs1val rs2val; then
                             rval=1
                         else
                             rval=0
@@ -341,7 +407,47 @@ step() {
             csrno=$((int >> 20))
             funct3=$(((int >> 12) & 0x7))
             if ((funct3 & 3)); then
-                echo "ziscr"
+                rs1imm=$(((int >> 15) & 0x1f))
+                rs1val=${REGS[rs1imm]}
+                writeval=$rs1val
+                case $csrno in
+					$((0x340))) rval=MSCRATCH;;
+					$((0x305))) rval=MTVEC;;
+					$((0x304))) rval=MIE;;
+					$((0xC00))) rval=CYCLE;;
+					$((0x344))) rval=MIP;;
+					$((0x341))) rval=MEPC;;
+					$((0x300))) rval=MSTATUS;;
+					$((0x342))) rval=MCAUSE;;
+					$((0x343))) rval=MTVAL;;
+					$((0xf11))) rval=0xff0ff0ff;;
+					$((0x301))) rval=0x40401101;;
+					*)
+    					csr_read $csrno $val
+					;;
+				esac
+				case $funct3 in
+				    1) writeval=$rs1val;;
+				    2) writeval=$((rval | rs1val));;
+					3) writeval=$((rval & ~rs1val));;
+					5) writeval=$rs1imm;;
+					6) writeval=$((rval | rs1imm));;
+					7) writeval=$((rval & ~rs1imm));;
+					*) echo "unknown funct3 $funct3";;
+				esac
+				case $csrno in
+                    $((0x340))) MSCRATCH=$writeval;;
+                    $((0x305))) MTVEC=$writeval;;
+                    $((0x304))) MIE=$writeval;;
+                    $((0x344))) MIP=$writeval;;
+                    $((0x341))) MEPC=$writeval;;
+                    $((0x300))) MSTATUS=$writeval;;
+                    $((0x342))) MCAUSE=$writeval;;
+                    $((0x343))) MTVAL=$writeval;;
+                    *)
+                    csr_write $csrno $writeval
+                    ;;
+				esac
             elif ((funct3 == 0)); then
                 echo "syscall (id:${REGS[17]}) args 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
 
@@ -387,4 +493,13 @@ step() {
 
     PC=$((PC + 4))
     # echo "-end of frame-"
+}
+
+loadblob() {
+   content=$(tohex)
+
+   for ((i=0; i<${#content}; i+=2)); do
+    # echo "$i ${content:i:2}"
+     memwritebyte $((i/2)) $(( "0x${content:i:2}" ))
+   done
 }
