@@ -8,6 +8,10 @@ INTMAX=$((2**31))
 RAM_IMAGE_OFFSET=2147483648
 USERMODE=0
 
+phex() {
+    local val=$1
+    printf "%08x" $val
+}
 
 csr_read() {
     local csrno=$1
@@ -46,6 +50,21 @@ csr_write() {
     esac
 
     # echo "csr write $csrno $val"
+}
+
+handle_control_load() {
+    # emulate UART
+    case $1 in
+        $((0x10000005)))
+            echo "keyboard shit" >&2
+            ;;
+        $((0x1100bffc)))
+            echo "$TIMERH"
+            ;;
+        $((0x1100bff8)))
+            echo "$TIMERL"
+            ;;
+    esac
 }
 
 reset() {
@@ -262,10 +281,18 @@ step() {
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
             rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
-            # echo "LW rsval: $rsval read $(memreadword $rsval)"
+            rsval=$((rsval & 0xFFFFFFFF)) # convert to unsigned uint32
             # memreadword $rsval
             if ((rsval > MEMSIZE - 4)); then
-                echo "peek out of bounds. uart?"
+                # undo the offset
+                rsval=$((rsval+RAM_IMAGE_OFFSET))
+                rsval=$((rsval & 0xFFFFFFFF)) # uint32 it again. logic here is FUCKED! this needs to be fixed
+                if ((0x10000000 <= rsval && rsval < 0x12000000)); then
+                    rval=$(handle_control_load $rsval)
+                else
+                    echo "memory access out of bounds"
+                    trap=6
+                fi
             else
                 funct3=$(((int >> 12) & 0x7))
                 case $funct3 in
