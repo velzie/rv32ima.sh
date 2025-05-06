@@ -72,7 +72,7 @@ MEMORY=()
 PC=0
 MEMSIZE=2000000
 INTMAX=$((2**31))
-RAM_IMAGE_OFFSET=0
+RAM_IMAGE_OFFSET=1000000
 reset() {
     # zero mem and regs
     for ((i=0; i<32; i++)); do
@@ -100,20 +100,26 @@ memwritebyte() {
     MEMORY[offs]=$(((MEMORY[offs] & mask) | (new << (align*8)) ))
 }
 memreadword() {
+    if (($1%4 == 0)); then
+        # aligned read
+        echo "${MEMORY[$1/4]}"
+    else
+        b1=$(memreadbyte $1)
+        b2=$(memreadbyte $((1+$1)))
+        b3=$(memreadbyte $((2+$1)))
+        b4=$(memreadbyte $((3+$1)))
+
+        echo $((b4<<24 | b3<<16 | b2<<8 | b1))
+    fi
+}
+
+memreadhalfword() {
     b1=$(memreadbyte $1)
     b2=$(memreadbyte $((1+$1)))
-    b3=$(memreadbyte $((2+$1)))
-    b4=$(memreadbyte $((3+$1)))
 
-    echo $((b4<<24 | b3<<16 | b2<<8 | b1))
+    echo $((b1<<8 | b2))
 }
-memwritehalfword() {
-    local offs=$1
-    local new=$2
 
-    memwritebyte $offs $((new >> 8))
-    memwritebyte $((1+$offs)) $((new))
-}
 memwritehalfword() {
     local offs=$1
     local new=$2
@@ -125,16 +131,21 @@ memwriteword() {
     local offs=$1
     local new=$2
 
-    memwritebyte $offs $((new >> 24))
-    memwritebyte $((1+$offs)) $((new >> 16))
-    memwritebyte $((2+$offs)) $((new >> 8))
-    memwritebyte $((3+$offs)) $((new))
+    memwritebyte $offs $((new))
+    memwritebyte $((1+offs)) $((new >> 8))
+    memwritebyte $((2+offs)) $((new >> 16))
+    memwritebyte $((3+offs)) $((new >> 24))
 }
+
 echo "filling"
 reset
 echo "filled"
 
-memreadword 0
+# echo "-"
+# memwriteword 999980 65852
+# memreadword 999980
+# echo "-"
+# exit
 
 disasm() {
     op=$(xt 0 6)
@@ -386,14 +397,25 @@ step() {
             # sext is -1,048,576 to +1,048,574
             if ((imm & 0x00100000)); then imm=$((imm | 0xffffffffffe00000)); fi
             rval=$((PC + 4))
+            # echo "SETTING RA to $rval"
             PC=$((PC + imm - 4))
+            # echo "JAL'd $imm"
             ;;
         $((0x67))) # JALR
             # I type
             # (rd = pc + 4; pc = rs1 + imm)
-            sextendimm
-            # rval=$((PC + 4))
-            # PC=$((REGS[rs1] + imm))
+            imm=$((int >> 20))
+            # sign extend between -2048 and +2047
+            if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
+            rs1=$(((int >> 15) & 0x1f))
+            rs1val=$((REGS[rs1]))
+
+            rval=$((PC + 4))
+            newpc=$((rs1val + imm))
+
+            # to my knowldege this aligns the PC? not sure why that's needed or what the -4 is for. look up later
+            PC=$(((newpc & ~1) - 4))
+            # echo "JALR'd $imm rs1 $rs1val newpc $newpc"
             ;;
         $((0x63))) # BRANCH
             # B type
@@ -424,7 +446,9 @@ step() {
             imm=$((int >> 20))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
+            # echo "LW rsval: $rsval"
+            # memreadword $rsval
             if ((rsval > MEMSIZE - 4)); then
                 echo "peek out of bounds. uart?"
             else
@@ -462,7 +486,9 @@ step() {
             imm=$(( ( ( int >> 7 ) & 0x1f ) | ( ( int & 0xfe000000 ) >> 20 ) ))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
+
+            # echo "SW rsval: $rsval write $rs2val"
             if ((rsval > MEMSIZE - 4)); then
                 echo "peek out of bounds. uart?"
             else
@@ -565,9 +591,7 @@ step() {
             if ((funct3 & 3)); then
                 echo "ziscr"
             elif ((funct3 == 0)); then
-                echo "ecall"
-                echo "syscall id is ${REGS[17]}"
-                echo "syscall arguments 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
+                echo "syscall (id:${REGS[17]}) args 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
 
                 case ${REGS[17]} in
                     64)
@@ -591,11 +615,14 @@ step() {
             fi
 
             ;;
-        *) echo "unknown opcode $opcode"
+        *)
+        echo "unknown opcode $opcode"
+        trap=3
+        ;;
     esac
 
     if ((trap)); then
-        echo "trap $trap"
+        echo "Segmentation Fault"
         exit 1
     fi
 
