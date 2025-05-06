@@ -572,6 +572,11 @@ step() {
                 case ${REGS[17]} in
                     64)
                         echo "write called"
+                        len=${REGS[12]}
+                        # dodump
+                        for ((i=0; i<len; i++)); do
+                            printf "%02x" $(memreadbyte $((REGS[11] + i))) | fromhex
+                        done
                         ;;
                     93)
                         echo "exit called! exit code ${REGS[10]}"
@@ -777,15 +782,18 @@ parseelf() {
 }
 dumpmem() {
     local i
-    # for ((i=0; i<$MEMSIZE; i++)); do
-    #     printf "%02x" "${MEMORY[$i]}"
-    # done
+    for ((i=0; i<MEMSIZE; i++)); do
+        printf "%02x" $(memreadbyte $i)
+    done
+}
+
+dodump() {
+    dumpmem | fromhex > dump
 }
 parseelf < $1
 while true; do
     step
 done
-dumpmem | fromhex > dump
 
 
 # a=$(readn 4 < test.bin | tohex)
