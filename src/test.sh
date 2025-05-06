@@ -81,6 +81,8 @@ reset() {
     for ((i=0; i<$((MEMSIZE/4)); i++)); do
         MEMORY[i]="0"
     done
+
+    echo "initialized $MEMSIZE bytes to 0"
 }
 
 memreadbyte() {
@@ -137,13 +139,12 @@ memwriteword() {
     memwritebyte $((3+offs)) $((new >> 24))
 }
 
-echo "filling"
 reset
-echo "filled"
 
 # echo "-"
-# memwriteword 999980 65852
-# memreadword 999980
+# memwriteword 999964 65836
+# memwriteword 999960 8
+# memreadword 999964
 # echo "-"
 # exit
 
@@ -360,10 +361,12 @@ disasm() {
 
 step() {
 
+    # echo "-start of frame-"
     if ((PC % 4 != 0)); then
         echo "PC not aligned"
     fi
     int=$(memreadword $PC)
+
     # printf "%08x" $int | sed 's/../& /g' | awk '{for(i=4;i>0;i--) printf $i}' | xxd -r -p > t
     # riscv32-unknown-linux-gnu-objdump -D -b binary -m riscv:rv32 t | grep -P '^\s*[0-9a-f]+:\s+[0-9a-f]+\s+' | sed -E 's/^\s*[0-9a-f]+:\s+[0-9a-f]+\s+//'   # echo -en "$int: "
 
@@ -377,6 +380,8 @@ step() {
     rval=$((((((sum + INTMAX) % (INTMAX * 2)) + (INTMAX * 2)) % (INTMAX * 2)) - (INTMAX)))
 
     opcode=$((int & 0x7f))
+
+
     # echo "$PC"
     case $opcode in
         $((0x37))) # LUI
@@ -447,7 +452,7 @@ step() {
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
             rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
-            # echo "LW rsval: $rsval"
+            # echo "LW rsval: $rsval read $(memreadword $rsval)"
             # memreadword $rsval
             if ((rsval > MEMSIZE - 4)); then
                 echo "peek out of bounds. uart?"
@@ -487,7 +492,7 @@ step() {
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
             rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
-
+            rdid=0
             # echo "SW rsval: $rsval write $rs2val"
             if ((rsval > MEMSIZE - 4)); then
                 echo "peek out of bounds. uart?"
@@ -535,6 +540,7 @@ step() {
                         if ((not_imm)) && ((int & 0x40000000)); then # add and subtract differentiated by the funct7
                             rval=$((rs1val - rs2val))
                         else
+                            # echo "ADDING $rs1val $rs2val"
                             rval=$((rs1val + rs2val))
                         fi
                     ;;
@@ -630,7 +636,11 @@ step() {
         REGS[rdid]=$rval
     fi
 
+    # echo "a0 ${REGS[10]} a2 ${REGS[12]} a5 ${REGS[15]} s0 ${REGS[8]}"
+
+
     PC=$((PC + 4))
+    # echo "-end of frame-"
 }
 # while parsei; do
 #     :
