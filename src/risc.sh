@@ -66,6 +66,19 @@ handle_control_load() {
             ;;
     esac
 }
+handle_control_store() {
+    local addr=$1
+    local val=$2
+    case $addr in
+        $((0x10000000)))
+            printf "%c" $2
+            ;;
+        $((0x11100000)))
+            echo "syscon (interpreting as poweroff)"
+            exit 1
+            ;;
+    esac
+}
 
 reset() {
     # zero mem and regs
@@ -331,10 +344,19 @@ step() {
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
             rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
+            rsval=$((rsval & 0xFFFFFFFF)) # convert to unsigned uint32
             rdid=0
-            # echo "SW rsval: $rsval write $rs2val"
+            # echo "SW rsval: $(phex $rsval) write $rs2val"
             if ((rsval > MEMSIZE - 4)); then
-                echo "peek out of bounds. uart?"
+                rsval=$((rsval+RAM_IMAGE_OFFSET))
+                rsval=$((rsval & 0xFFFFFFFF)) # uint32 it again.
+
+                if ((0x10000000 <= rsval && rsval < 0x12000000)); then
+                    handle_control_store $rsval $rs2val
+                else
+                    echo "memory access out of bounds"
+                    trap=6
+                fi
             else
                 funct3=$(((int >> 12) & 0x7))
                 case $funct3 in
