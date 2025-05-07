@@ -147,7 +147,6 @@ parseelf() {
                 # wherever i map must be a multiple of p_align
                 echo "type $p_type offset $p_offset addr $p_vaddr/$p_paddr filesz $p_filesz memsz $p_memsz flags $p_flags align $p_align"
 
-                MEMORY[0]=1
                 for ((j=0; j<p_memsz; j++)); do
                     offs=$((p_vaddr+j))
                     if ((j > p_filesz)); then

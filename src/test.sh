@@ -22,7 +22,7 @@ dodump() {
 
 # parseelf < $1
 
-init 0 100000
+init 0 2155481920
 loadblob $1
 
 while true; do

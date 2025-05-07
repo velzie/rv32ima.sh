@@ -27,7 +27,6 @@ function csr_write {
     case $csrno in
         $((0x136)))
             printf "%d" $val
-            echo
             ;;
         $((0x137)))
             printf "%08x" $val
@@ -206,6 +205,8 @@ diasm() {
 }
 
 function step {
+
+    dumpstate
 
     # echo "-start of frame-"
     if ((PC % 4 != 0)); then
@@ -542,7 +543,6 @@ function step {
     PC=$((PC + 4))
     # echo "-end of frame-"
 
-    # dumpstate
 }
 dumpstate() {
     pc_offset=$((PC - RAM_IMAGE_OFFSET))
