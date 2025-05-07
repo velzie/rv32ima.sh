@@ -8,19 +8,19 @@ INTMAX=$((2**31))
 RAM_IMAGE_OFFSET=2147483648
 USERMODE=0
 
-phex() {
+function phex {
     local val=$1
     printf "%08x" $val
 }
 
-csr_read() {
+function csr_read {
     local csrno=$1
 
 
     # echo "csr read $csrno"
 }
 
-csr_write() {
+function csr_write {
     local csrno=$1
     local val=$2
 
@@ -67,7 +67,7 @@ handle_control_load() {
             ;;
     esac
 }
-handle_control_store() {
+function handle_control_store {
     local addr=$1
     local val=$2
     case $addr in
@@ -93,7 +93,7 @@ reset() {
     # echo "initialized $MEMSIZE bytes to 0"
 }
 
-init() {
+function init {
     local pc=$1
     local dtb_ptr=$2
 
@@ -116,14 +116,15 @@ init() {
     EXTRAFLAGS=0
 }
 
-memreadbyte() {
+function memreadbyte {
     local offs=$1
     local align=$((offs%4))
     offs=$((offs/4))
 
     echo $(((MEMORY[offs] >> (align*8)) & 0xFF))
 }
-memwritebyte() {
+
+function memwritebyte {
     local offs=$1
     local align=$((offs%4))
     offs=$((offs/4))
@@ -132,7 +133,8 @@ memwritebyte() {
 
     MEMORY[offs]=$(((MEMORY[offs] & mask) | (new << (align*8)) ))
 }
-memreadword() {
+
+function memreadword {
     if (($1%4 == 0)); then
         # aligned read
         echo "${MEMORY[$1/4]}"
@@ -146,21 +148,22 @@ memreadword() {
     fi
 }
 
-memreadhalfword() {
+function memreadhalfword {
     b1=$(memreadbyte $1)
     b2=$(memreadbyte $((1+$1)))
 
     echo $((b1<<8 | b2))
 }
 
-memwritehalfword() {
+function memwritehalfword {
     local offs=$1
     local new=$2
 
     memwritebyte $offs $((new >> 8))
     memwritebyte $((1+$offs)) $((new))
 }
-memwriteword() {
+
+function memwriteword {
     local offs=$1
     local new=$2
 
@@ -181,7 +184,7 @@ reset
 
 # emulate 32-bit unsigned less than by splitting the number into two 16-bit components
 # code stolen from riscvscript
-rv32_unsigned_lt() {
+function rv32_unsigned_lt {
     local x=$1
     local y=$2
 
@@ -202,7 +205,7 @@ diasm() {
     riscv32-unknown-linux-gnu-objdump -D -b binary -M no-aliases -m riscv:rv32 t | grep -P '^\s*[0-9a-f]+:\s+[0-9a-f]+\s+' | sed -E 's/^\s*[0-9a-f]+:\s+[0-9a-f]+\s+//'   # echo -en "$int: "
 }
 
-step() {
+function step {
 
     # echo "-start of frame-"
     if ((PC % 4 != 0)); then
@@ -215,9 +218,6 @@ step() {
 
     local rval=0
     local rdid=$(((int >> 7) & 0x1f))
-
-    local sum=$((REGS[rs1] + imm))
-    rval=$((((((sum + INTMAX) % (INTMAX * 2)) + (INTMAX * 2)) % (INTMAX * 2)) - (INTMAX)))
 
     opcode=$((int & 0x7f))
 
@@ -542,7 +542,7 @@ step() {
     PC=$((PC + 4))
     # echo "-end of frame-"
 
-    dumpstate
+    # dumpstate
 }
 dumpstate() {
     pc_offset=$((PC - RAM_IMAGE_OFFSET))

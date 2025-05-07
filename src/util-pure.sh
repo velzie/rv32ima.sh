@@ -20,7 +20,7 @@ readn(){
 
 fromhex() {
   while IFS= read -r -n2 ch; do
-    echo -en "\x$ch"
+    printf "\\x$ch"
 	done
 }
 
