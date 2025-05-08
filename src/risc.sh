@@ -144,14 +144,14 @@ function memreadword {
 
     if ((offs%4 == 0)); then
         # aligned read
-        echo "${MEMORY[offs/4]}"
+        echo "$((MEMORY[offs/4] & 0xFFFFFFFF))"
     else
         b1=$(memreadbyte $offs)
         b2=$(memreadbyte $((1+$offs)))
         b3=$(memreadbyte $((2+$offs)))
         b4=$(memreadbyte $((3+$offs)))
 
-        echo $((b4<<24 | b3<<16 | b2<<8 | b1))
+        echo "$(((b4<<24 | b3<<16 | b2<<8 | b1) & 0xFFFFFFFF))"
     fi
 }
 
@@ -161,7 +161,7 @@ function memreadhalfword {
     b1=$(memreadbyte $offs)
     b2=$(memreadbyte $((1+offs)))
 
-    echo $((b1<<8 | b2))
+    echo "$((b1<<8 | b2))"
 }
 
 function memwritehalfword {
@@ -171,8 +171,8 @@ function memwritehalfword {
     #     # echo "hit this THAT"
     #     exit 1
     # fi
-    memwritebyte $offs $((new >> 8))
-    memwritebyte $((1+$offs)) $((new))
+    memwritebyte "$offs" "$((new >> 8))"
+    memwritebyte "$((1+offs))" "$((new))"
 }
 
 function memwriteword {
@@ -186,7 +186,7 @@ function memwriteword {
 
     local new=$2
 
-    memwritebyte $offs $((new))
+    memwritebyte "$offs" "$((new))"
     memwritebyte $((1+offs)) $((new >> 8))
     memwritebyte $((2+offs)) $((new >> 16))
     memwritebyte $((3+offs)) $((new >> 24))
@@ -438,7 +438,29 @@ function step {
 
             funct3=$(((int >> 12) & 0x7))
             if ((not_imm)) && ((int & 0x02000000)); then
-                echo "rv32M extension"
+                case $funct3 in
+                    0) rval=$((rs1val * rs2val));; # MUL
+                    1) rval=$(((rs1val * rs2val) >> 32));; # MULH
+                    2) # rs1 is signed but rs2 is unsigned (?)
+                    rs2val=$((rs2val & 0xFFFFFFFF));
+                    rval=$(((rs1val * rs2val) >> 32));; # MULHSU
+                    3) # both are unsigned
+                    rs1val=$((rs1val & 0xFFFFFFFF));
+                    rs2val=$((rs2val & 0xFFFFFFFF));
+                    rval=$(((rs1val * rs2val) >> 32));; # MULHU
+
+                    4) if ((rs2val == 0)); then rval=-1; else rval=$((rs1val/rs2val)); fi;; # DIV
+                    5)
+                    rs1val=$((rs1val & 0xFFFFFFFF));
+                    rs2val=$((rs2val & 0xFFFFFFFF));
+                    if ((rs2val == 0)); then rval=0xffffffff; else rval=$((rs1val/rs2val)); fi;; # DIVU
+                    6) if ((rs2val == 0)); then rval=$rs1val; else rval=$((rs1val%rs2val)); fi;; # REM
+                    7)
+                    rs1val=$((rs1val & 0xFFFFFFFF));
+                    rs2val=$((rs2val & 0xFFFFFFFF));
+                    if ((rs2val == 0)); then rval=$rs1val; else rval=$((rs1val%rs2val)); fi;; # REMU
+
+                esac
             else
                 case $funct3 in
                     0) # add/sub/addi
