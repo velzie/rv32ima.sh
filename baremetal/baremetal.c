@@ -75,7 +75,7 @@ int main()
 
 	// Wait a while.
 	uint32_t cyclecount_initial = get_cyc_count();
-	uint32_t timer_initial = TIMERL;
+	// uint32_t timer_initial = TIMERL;
 
 	volatile int i;
 	for( i = 0; i < 100; i++ )
@@ -85,10 +85,10 @@ int main()
 
 	// Gather the wall-clock time and # of cycles
 	uint32_t cyclecount = get_cyc_count() - cyclecount_initial;
-	uint32_t timer = TIMERL - timer_initial;
+	// uint32_t timer = TIMERL - timer_initial;
 
 	lprint( "Processor effective speed: ");
-	nprint( timer );
+	// nprint( timer );
 	lprint( " Mcyc/s\n");
 
 	lprint("\n");

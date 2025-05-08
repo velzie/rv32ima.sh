@@ -205,24 +205,6 @@ reset
 # echo "-"
 # exit
 
-# emulate 32-bit unsigned less than by splitting the number into two 16-bit components
-# code stolen from riscvscript
-function rv32_unsigned_lt {
-    local x=$1
-    local y=$2
-
-    local x_lower=$((x & 0x0000ffff))
-    local x_upper=$(( ( x >> 16 ) & 0x0000ffff))
-
-    local y_lower=$((y & 0x0000ffff))
-    local y_upper=$(( ( y >> 16 ) & 0x0000ffff))
-
-    if (( x_upper == y_upper )); then
-        return $((x_lower < y_lower))
-    fi
-
-    return $((x_upper < y_upper));
-}
 diasm() {
     printf "%08x" $int | sed 's/../& /g' | awk '{for(i=4;i>0;i--) printf $i}' | xxd -r -p > t
     riscv32-unknown-linux-gnu-objdump -D -b binary -M no-aliases -m riscv:rv32 t | grep -P '^\s*[0-9a-f]+:\s+[0-9a-f]+\s+' | sed -E 's/^\s*[0-9a-f]+:\s+[0-9a-f]+\s+//'   # echo -en "$int: "
