@@ -3,7 +3,12 @@ exec {f2}<dump2
 
 count=0
 
-compare_registers() {
+diasm() {
+    printf "%08x" $int | sed 's/../& /g' | awk '{for(i=4;i>0;i--) printf $i}' | xxd -r -p > t
+    riscv32-unknown-linux-gnu-objdump -D -b binary -M no-aliases -m riscv:rv32 t | grep -P '^\s*[0-9a-f]+:\s+[0-9a-f]+\s+' | sed -E 's/^\s*[0-9a-f]+:\s+[0-9a-f]+\s+//'   # echo -en "$int: "
+}
+
+function compare_registers {
   local dump1="$1"
   local dump2="$2"
 
@@ -32,10 +37,13 @@ compare_registers() {
   done
 }
 while true; do
+    hex=${l1##*[0x}
     IFS= read -r l1 <&$f1
     IFS= read -r l2 <&$f2
     if [ "$l1" != "$l2" ]; then
-        echo "diffs at line $count"
+        hex=${hex%%]*}
+        int=$((0x$hex))
+        echo "diverges at cycle $count after [$(diasm | sed 's/\t/ /g'| tr -s ' ')]"
         echo "------reference------"
         echo "$l1"
         echo "------actual------"

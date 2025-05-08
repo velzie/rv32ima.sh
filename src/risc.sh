@@ -26,6 +26,7 @@ function csr_write {
 
     case $csrno in
         $((0x136)))
+            if ((val & 0x80000000)); then val=$((val | 0xFFFFFFFF00000000)); fi
             printf "%d" $val
             ;;
         $((0x137)))
@@ -41,7 +42,7 @@ function csr_write {
                     break
                 fi
                 printf "%02x" $byte | fromhex
-                offs=$((offs+1))
+                ((offs++))
             done
             ;;
         $((0x139)))
@@ -95,6 +96,7 @@ reset() {
 function init {
     local pc=$1
     local dtb_ptr=$2
+    dtb_ptr=$((dtb_ptr+RAM_IMAGE_OFFSET))
 
     REGS[11]=$dtb_ptr
     PC=$RAM_IMAGE_OFFSET
@@ -125,6 +127,9 @@ function memreadbyte {
 
 function memwritebyte {
     local offs=$1
+    # if ((offs < 2401136)); then
+    #     echo "HIT"
+    # fi
     local align=$((offs%4))
     offs=$((offs/4))
     local mask=$(( ~(0xFF << (align*8)) ))
@@ -134,22 +139,27 @@ function memwritebyte {
 }
 
 function memreadword {
-    if (($1%4 == 0)); then
+    local offs=$1
+
+
+    if ((offs%4 == 0)); then
         # aligned read
-        echo "${MEMORY[$1/4]}"
+        echo "${MEMORY[offs/4]}"
     else
-        b1=$(memreadbyte $1)
-        b2=$(memreadbyte $((1+$1)))
-        b3=$(memreadbyte $((2+$1)))
-        b4=$(memreadbyte $((3+$1)))
+        b1=$(memreadbyte $offs)
+        b2=$(memreadbyte $((1+$offs)))
+        b3=$(memreadbyte $((2+$offs)))
+        b4=$(memreadbyte $((3+$offs)))
 
         echo $((b4<<24 | b3<<16 | b2<<8 | b1))
     fi
 }
 
 function memreadhalfword {
-    b1=$(memreadbyte $1)
-    b2=$(memreadbyte $((1+$1)))
+    local offs=$1
+
+    b1=$(memreadbyte $offs)
+    b2=$(memreadbyte $((1+offs)))
 
     echo $((b1<<8 | b2))
 }
@@ -157,13 +167,23 @@ function memreadhalfword {
 function memwritehalfword {
     local offs=$1
     local new=$2
-
+    # if ((offs < 2401136)); then
+    #     # echo "hit this THAT"
+    #     exit 1
+    # fi
     memwritebyte $offs $((new >> 8))
     memwritebyte $((1+$offs)) $((new))
 }
 
 function memwriteword {
     local offs=$1
+    # if ((offs < 2401136)); then
+    #     :
+    #     # echo "IGNORING write to $offs at cycle $CYCLEL" >&2
+    #     # return
+    #     # exit 1
+    # fi
+
     local new=$2
 
     memwritebyte $offs $((new))
@@ -206,21 +226,33 @@ diasm() {
 
 function step {
 
-    dumpstate
+
+    ((CYCLEL++))
 
     # echo "-start of frame-"
     if ((PC % 4 != 0)); then
         echo "PC not aligned"
     fi
     int=$(memreadword $((PC-RAM_IMAGE_OFFSET)))
+    # i should NOT have to do this something is very wrong
+    int=$((int & 0xFFFFFFFF))
+
+    dumpstate
 
     # printf "%08x" $int
-    # diasm $int
+    # diasm
 
     local rval=0
     local rdid=$(((int >> 7) & 0x1f))
 
     opcode=$((int & 0x7f))
+
+    # echo "READ AS $(memreadword 1301196)"
+    # if (($(memreadword 1301196) != 29433987)); then
+    #     echo "FUCKED AT $CYCLEL"
+    #     exit 1
+    # fi
+
 
 
     # echo "$PC"
@@ -284,8 +316,8 @@ function step {
                 $((0x5))) if (( rs1val >= rs2val )); then PC=$jumpto; fi ;;
 
                 #  BLTU, BGEU (zero extended / unsigned variants)
-                $((0x6))) if rv32_unsigned_lt rs1val rs2val; then PC=$jumpto; fi ;; # zero ext here
-                $((0x7))) if ! rv32_unsigned_lt rs1val rs2val; then PC=$jumpto; fi ;; # zero ext here
+                $((0x6))) if rv32_unsigned_lt $rs1val $rs2val; then PC=$jumpto; fi ;; # zero ext here
+                $((0x7))) if ! rv32_unsigned_lt $rs1val $rs2val; then PC=$jumpto; fi ;; # zero ext here
                 *) trap=3;;
             esac
             ;;
@@ -381,6 +413,10 @@ function step {
             rs1=$(((int >> 15) & 0x1f))
             rs1val=$((REGS[rs1]))
 
+            # all ints are stored as unsigned in memory and in registers
+            # explicitly convert to signed for the purposes of bash math
+            if ((rs1val & 0x80000000)); then rs1val=$((rs1val | 0xFFFFFFFF00000000)); fi
+
             # 0110011 for OP 0010011 for OP Immediate
             # the 0x20 is the 0100000 difference
             not_imm=$((int & 0x20))
@@ -448,6 +484,9 @@ function step {
                     ;;
                 esac
             fi
+
+            # now that the math is done make it unsigned again
+            rval=$((rval & 0xFFFFFFFF))
             ;;
         $((0x0f)))
             # dumbass fence thing
@@ -461,16 +500,17 @@ function step {
                 rs1imm=$(((int >> 15) & 0x1f))
                 rs1val=${REGS[rs1imm]}
                 writeval=$rs1val
+                # echo "ASKED FOR CSR $csrno $CYCLEL $rdid $CYCLEL" >&2
                 case $csrno in
-					$((0x340))) rval=MSCRATCH;;
-					$((0x305))) rval=MTVEC;;
-					$((0x304))) rval=MIE;;
-					$((0xC00))) rval=CYCLE;;
-					$((0x344))) rval=MIP;;
-					$((0x341))) rval=MEPC;;
-					$((0x300))) rval=MSTATUS;;
-					$((0x342))) rval=MCAUSE;;
-					$((0x343))) rval=MTVAL;;
+					$((0x340))) rval=$MSCRATCH;;
+					$((0x305))) rval=$MTVEC;;
+					$((0x304))) rval=$MIE;;
+					$((0xC00))) rval=$CYCLEL;;
+					$((0x344))) rval=$MIP;;
+					$((0x341))) rval=$MEPC;;
+					$((0x300))) rval=$MSTATUS;;
+					$((0x342))) rval=$MCAUSE;;
+					$((0x343))) rval=$MTVAL;;
 					$((0xf11))) rval=0xff0ff0ff;;
 					$((0x301))) rval=0x40401101;;
 					*)
@@ -522,7 +562,6 @@ function step {
             else
                 trap=3
             fi
-
             ;;
         *)
         echo "unknown opcode $opcode"
@@ -539,14 +578,15 @@ function step {
         REGS[rdid]=$rval
     fi
 
-
     PC=$((PC + 4))
     # echo "-end of frame-"
+
 
 }
 dumpstate() {
     pc_offset=$((PC - RAM_IMAGE_OFFSET))
     ir=0
+    # printf "fucking pc $PC fucking $(memreadword 1301196) != 29433987"
     printf 'PC: %08x ' $PC
     if ((pc_offset >=0 )) && ((pc_offset < (MEMSIZE - 3))); then
         ir=$(memreadword $((pc_offset)))
