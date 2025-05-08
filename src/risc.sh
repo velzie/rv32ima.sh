@@ -226,7 +226,6 @@ diasm() {
 
 function step {
 
-
     ((CYCLEL++))
 
     # echo "-start of frame-"
@@ -478,6 +477,7 @@ function step {
                     2) # slt/slti
                         # this one compares the values and sets the result to 1 if true, 0 otherwise
                         # thats why it looks weird
+
                         if ((rs1val < rs2val)); then
                             rval=1
                         else
@@ -486,8 +486,9 @@ function step {
                     ;;
                     3)  # sltu/sltiu
                         # same thing except unsigned/zero extended
-                        # todo
-                        if rv32_unsigned_lt rs1val rs2val; then
+                        rs1val=$((rs1val & 0xFFFFFFFF))
+                        rs2val=$((rs2val & 0xFFFFFFFF))
+                        if ((rs1val < rs2val)); then
                             rval=1
                         else
                             rval=0
@@ -499,7 +500,7 @@ function step {
                     5) # srl/sra/srli/srai
                         # also differentiated by func7 (or imm but it's in the same place)
                         if ((int & 0x40000000)); then
-                            # todo zero extend this one
+                            rs2val=$((rs2val & 0xFFFFFFFF));
                             rval=$((rs1val >> (rs2val & 0x1f)))
                         else
                             rval=$((rs1val >> (rs2val & 0x1f)))
@@ -589,9 +590,63 @@ function step {
                         ;;
                 esac
             else
+                echo "fuck trapping here"
                 trap=3
             fi
             ;;
+        $((0x2F))) # RV32A
+            # this is a single core processor so the atomic operations aren't very interesting
+            # worth noting that this is another access point for memory though
+            rs1val=$((REGS[(int >> 15) & 0x1f]))
+            rs2val=$((REGS[(int >> 20) & 0x1f]))
+            irmid=$(((int >> 27) & 0x1f))
+            rs1val=$((rs1val-RAM_IMAGE_OFFSET))
+            if ((rs1val > (MEMSIZE - 4))); then
+                echo "trap 8 lol $rs1val"
+                trap=8
+                rval=$((rs1val + RAM_IMAGE_OFFSET))
+            else
+                rval=$(memreadword "$rs1val")
+      #           switch( irmid )
+				# {
+				# 	case 2: //LR.W (0b00010)
+				# 		dowrite = 0;
+				# 		CSR( extraflags ) = (CSR( extraflags ) & 0x07) | (rs1<<3);
+				# 		break;
+				# 	case 3:  //SC.W (0b00011) (Make sure we have a slot, and, it's valid)
+				# 		rval = ( CSR( extraflags ) >> 3 != ( rs1 & 0x1fffffff ) );  // Validate that our reservation slot is OK.
+				# 		dowrite = !rval; // Only write if slot is valid.
+				# 		break;
+				# 	case 1: break; //AMOSWAP.W (0b00001)
+				# 	case 0: rs2 += rval; break; //AMOADD.W (0b00000)
+				# 	case 4: rs2 ^= rval; break; //AMOXOR.W (0b00100)
+				# 	case 12: rs2 &= rval; break; //AMOAND.W (0b01100)
+				# 	case 8: rs2 |= rval; break; //AMOOR.W (0b01000)
+				# 	case 16: rs2 = ((int32_t)rs2<(int32_t)rval)?rs2:rval; break; //AMOMIN.W (0b10000)
+				# 	case 20: rs2 = ((int32_t)rs2>(int32_t)rval)?rs2:rval; break; //AMOMAX.W (0b10100)
+				# 	case 24: rs2 = (rs2<rval)?rs2:rval; break; //AMOMINU.W (0b11000)
+				# 	case 28: rs2 = (rs2>rval)?rs2:rval; break; //AMOMAXU.W (0b11100)
+				# 	default: trap = (2+1); dowrite = 0; break; //Not supported.
+				# }
+				# if( dowrite ) MINIRV32_STORE4( rs1, rs2 );
+                dowrite=1
+                case "$irmid" in
+                    2) # LR.W
+                    dowrite=0
+                    EXTRAFLAGS=$(((EXTRAFLAGS & 0x07) | (rs1val << 3)))
+                    ;;
+                    3) # SC.W
+                        rval=$(( (EXTRAFLAGS>>3) != (rs1val & 0x1fffffff) ))
+                        dowrite=$((!rval))
+                    ;;
+                    1);; # AMOSWAP.W is ignored by the ref impl for some reason. not sure why?
+                    0) rs2val=$((rs2val += rval));; # AMOADD.W
+                    8) rs2val=$((rs2val | rval));; # AMOOR.W
+                esac
+
+                if ((dowrite)); then memwriteword "$rs1val" "$rs2val"; fi
+            fi
+        ;;
         *)
         echo "unknown opcode $opcode"
         trap=3
