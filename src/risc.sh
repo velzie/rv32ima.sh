@@ -57,8 +57,11 @@ handle_control_load() {
     # emulate UART
     case $1 in
         $((0x10000005)))
-            echo "keyboard shit" >&2
+            # is there kb input
+            echo "$((0x60 | 0))"
             ;;
+        # $(()
+        #  0xffffffff
         $((0x1100bffc)))
             echo "$TIMERH"
             ;;
@@ -72,7 +75,8 @@ function handle_control_store {
     local val=$2
     case $addr in
         $((0x10000000)))
-            printf "%c" $2
+            # printf "%c" $2
+            printf "\\$(printf '%03o' $2)"
             ;;
         $((0x11100000)))
             echo "syscon (interpreting as poweroff)"
@@ -161,7 +165,7 @@ function memreadhalfword {
     b1=$(memreadbyte $offs)
     b2=$(memreadbyte $((1+offs)))
 
-    echo "$((b1<<8 | b2))"
+    echo "$((b2<<8 | b1))"
 }
 
 function memwritehalfword {
@@ -171,8 +175,8 @@ function memwritehalfword {
     #     # echo "hit this THAT"
     #     exit 1
     # fi
-    memwritebyte "$offs" "$((new >> 8))"
-    memwritebyte "$((1+offs))" "$((new))"
+    memwritebyte "$offs" "$((new))"
+    memwritebyte "$((1+offs))" "$((new >> 8))"
 }
 
 function memwriteword {
@@ -236,7 +240,7 @@ function step {
     # i should NOT have to do this something is very wrong
     int=$((int & 0xFFFFFFFF))
 
-    dumpstate
+    # dumpstate
 
     # printf "%08x" $int
     # diasm
@@ -430,6 +434,8 @@ function step {
                 # both sets are the same just load from register if OP
                 rs2=$(((int >> 20) & 0x1f))
                 rs2val=$((REGS[rs2]))
+
+                if ((rs2val & 0x80000000)); then rs2val=$((rs2val | 0xFFFFFFFF00000000)); fi
             else
                 # and immediate otherwise
                 rs2val=$imm
@@ -500,9 +506,10 @@ function step {
                     5) # srl/sra/srli/srai
                         # also differentiated by func7 (or imm but it's in the same place)
                         if ((int & 0x40000000)); then
-                            rs2val=$((rs2val & 0xFFFFFFFF));
                             rval=$((rs1val >> (rs2val & 0x1f)))
                         else
+                            rs2val=$((rs2val & 0xFFFFFFFF));
+                            rs1val=$((rs1val & 0xFFFFFFFF));
                             rval=$((rs1val >> (rs2val & 0x1f)))
                         fi
                     ;;
@@ -642,6 +649,11 @@ function step {
                     1);; # AMOSWAP.W is ignored by the ref impl for some reason. not sure why?
                     0) rs2val=$((rs2val += rval));; # AMOADD.W
                     8) rs2val=$((rs2val | rval));; # AMOOR.W
+                    *)
+                        trap=3
+                        echo "unimplemented atomic $irmid"
+                        dowrite=0
+                    ;;
                 esac
 
                 if ((dowrite)); then memwriteword "$rs1val" "$rs2val"; fi
