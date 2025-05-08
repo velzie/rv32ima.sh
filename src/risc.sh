@@ -266,7 +266,7 @@ function step {
         $((0x17))) # AUIPC
             # U type
             # (rd = pc + imm << 12)
-            rval=$((PC + (int & 0xfffff000)))
+            rval=$(((PC + (int & 0xfffff000)) & 0xFFFFFFFF ))
             ;;
         $((0x6f))) # JAL
             # J type
@@ -308,6 +308,13 @@ function step {
             jumpto=$((PC + imm - 4))
             rdid=0
             funct3=$(((int >> 12) & 0x7))
+
+            if ((funct3 < 0x6)); then
+                # comparisons (other than bltu/bgeu) need to happen with signed registers
+                if ((rs1val & 0x80000000)); then rs1val=$((rs1val | 0xFFFFFFFF00000000)); fi
+                if ((rs2val & 0x80000000)); then rs2val=$((rs2val | 0xFFFFFFFF00000000)); fi
+            fi
+
             case $funct3 in
                 # BEQ, BNE, BLT, BGE
                 $((0x0))) if (( rs1val == rs2val )); then PC=$jumpto; fi ;;
@@ -316,8 +323,8 @@ function step {
                 $((0x5))) if (( rs1val >= rs2val )); then PC=$jumpto; fi ;;
 
                 #  BLTU, BGEU (zero extended / unsigned variants)
-                $((0x6))) if rv32_unsigned_lt $rs1val $rs2val; then PC=$jumpto; fi ;; # zero ext here
-                $((0x7))) if ! rv32_unsigned_lt $rs1val $rs2val; then PC=$jumpto; fi ;; # zero ext here
+                $((0x6))) if (( rs1val < rs2val )); then PC=$jumpto; fi ;;
+                $((0x7))) if (( rs1val >= rs2val )); then PC=$jumpto; fi ;;
                 *) trap=3;;
             esac
             ;;
