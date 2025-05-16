@@ -5,7 +5,7 @@ REGS=()
 MEMORY=()
 PC=0
 INTMAX=$((2**31))
-RAM_IMAGE_OFFSET=2147483648
+RAM_IMAGE_OFFSET=1000000
 USERMODE=0
 
 function phex {
@@ -92,7 +92,9 @@ reset() {
     done
     for ((i=0; i<$((MEMSIZE/4)); i++)); do
         MEMORY[i]=0
+        printf "\x1b[1G\x1b[2KReseting memory %i%%" $(((i*100)/(MEMSIZE/4) + 1))
     done
+    printf "\n"
 
     # echo "initialized $MEMSIZE bytes to 0"
 }
@@ -218,7 +220,7 @@ function step {
     if ((PC % 4 != 0)); then
         echo "PC not aligned"
     fi
-    int=$(memreadword $((PC-RAM_IMAGE_OFFSET)))
+    int=$(memreadword $PC)
     # i should NOT have to do this something is very wrong
     int=$((int & 0xFFFFFFFF))
 
@@ -319,7 +321,7 @@ function step {
             imm=$((int >> 20))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
             rsval=$((rsval & 0xFFFFFFFF)) # convert to unsigned uint32
             # memreadword $rsval
             if ((rsval > MEMSIZE - 4)); then
@@ -369,7 +371,7 @@ function step {
             imm=$(( ( ( int >> 7 ) & 0x1f ) | ( ( int & 0xfe000000 ) >> 20 ) ))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
             rsval=$((rsval & 0xFFFFFFFF)) # convert to unsigned uint32
             rdid=0
             # echo "SW rsval: $(phex $rsval) write $rs2val"

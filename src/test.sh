@@ -1,7 +1,7 @@
 #shellcheck shell=ksh
 export LC_ALL=C
 
-MEMSIZE=8000000
+MEMSIZE=8000
 
 . src/util-pure.sh
 . src/fmt.sh
@@ -20,7 +20,7 @@ dodump() {
     dumpmem | fromhex > dump
 }
 
-# parseelf < $1
+parseelf < $1
 
 loadblob $1
 dtb_size=$(stat -c%s $2)
