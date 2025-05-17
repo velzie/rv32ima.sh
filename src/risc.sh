@@ -5,7 +5,7 @@ REGS=()
 MEMORY=()
 PC=0
 INTMAX=$((2**31))
-RAM_IMAGE_OFFSET=1000000
+RAM_IMAGE_OFFSET=0
 USERMODE=0
 
 function phex {
@@ -220,7 +220,8 @@ function step {
     if ((PC % 4 != 0)); then
         echo "PC not aligned"
     fi
-    int=$(memreadword $PC)
+    int=$(memreadword $((PC-RAM_IMAGE_OFFSET)))
+    printf "%i, %i = %i\n" $PC $int $((PC-RAM_IMAGE_OFFSET))
     # i should NOT have to do this something is very wrong
     int=$((int & 0xFFFFFFFF))
 
@@ -328,12 +329,7 @@ function step {
                 # undo the offset
                 rsval=$((rsval+RAM_IMAGE_OFFSET))
                 rsval=$((rsval & 0xFFFFFFFF)) # uint32 it again. logic here is FUCKED! this needs to be fixed
-                if ((0x10000000 <= rsval && rsval < 0x12000000)); then
-                    rval=$(handle_control_load $rsval)
-                else
-                    echo "memory access out of bounds"
-                    trap=6
-                fi
+                rval=$(handle_control_load $rsval)
             else
                 funct3=$(((int >> 12) & 0x7))
                 case $funct3 in
@@ -379,12 +375,7 @@ function step {
                 rsval=$((rsval+RAM_IMAGE_OFFSET))
                 rsval=$((rsval & 0xFFFFFFFF)) # uint32 it again.
 
-                if ((0x10000000 <= rsval && rsval < 0x12000000)); then
-                    handle_control_store $rsval $rs2val
-                else
-                    echo "memory access out of bounds"
-                    trap=6
-                fi
+                handle_control_store $rsval $rs2val
             else
                 funct3=$(((int >> 12) & 0x7))
                 case $funct3 in
@@ -569,7 +560,7 @@ function step {
                         len=${REGS[12]}
                         # dodump
                         for ((i=0; i<len; i++)); do
-                            printf "%02x" $(memreadbyte $((REGS[11] + i))) | fromhex
+                            printf "%02x" $(memreadbyte $((REGS[11] + i + 83))) | fromhex
                         done
                         ;;
                     93)
