@@ -90,6 +90,9 @@ reset() {
     for ((i=0; i<32; i++)); do
         REGS[i]=0
     done
+    REGS[8]=$((MEMSIZE - 10000))
+    REGS[2]=$((MEMSIZE - 10000))
+
     for ((i=0; i<$((MEMSIZE/4)); i++)); do
         MEMORY[i]=0
         printf "\x1b[1G\x1b[2KReseting memory %i%%" $(((i*100)/(MEMSIZE/4) + 1))
@@ -558,9 +561,11 @@ function step {
                     64)
                         echo "write called"
                         len=${REGS[12]}
+
+
                         # dodump
                         for ((i=0; i<len; i++)); do
-                            printf "%02x" $(memreadbyte $((REGS[11] + i + 83))) | fromhex
+                            printf "%02x" $(memreadbyte $((REGS[11] + i))) | fromhex
                         done
                         ;;
                     93)
