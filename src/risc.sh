@@ -224,7 +224,6 @@ function step {
         echo "PC not aligned"
     fi
     int=$(memreadword $((PC-RAM_IMAGE_OFFSET)))
-    printf "%i, %i = %i\n" $PC $int $((PC-RAM_IMAGE_OFFSET))
     # i should NOT have to do this something is very wrong
     int=$((int & 0xFFFFFFFF))
 

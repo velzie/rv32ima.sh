@@ -1,2 +1,2 @@
 #include <stdio.h>
-void _start() { printf("Hello from printf \n"); }
+void _start() { printf("Hello from printf %i \n", 2); }

@@ -2,3 +2,5 @@ t
 dump1
 dump2
 buildroot
+test*
+*.o
