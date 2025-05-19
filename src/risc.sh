@@ -567,6 +567,9 @@ function step {
                             printf "%02x" $(memreadbyte $((REGS[11] + i))) | fromhex
                         done
                         ;;
+                    65)
+                        echo "ticks called, IMPLEMENT ME!!"
+                        REGS[11]=1
                     93)
                         echo "exit called! exit code ${REGS[10]}"
                         exit 0

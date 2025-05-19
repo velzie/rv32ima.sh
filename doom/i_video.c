@@ -222,12 +222,7 @@ void I_InitGraphics(void) {
 }
 
 void I_StartTic(void) { CNFGHandleInput(); }
-void I_ReadScreen(byte *scr) {
-  memcpy(scr, screens[0], SCREENWIDTH * SCREENHEIGHT);
-}
 void I_StartFrame() {}
-
-void I_ShutdownGraphics(void) { exit(0); }
 
 void I_FinishUpdate(void) {
 

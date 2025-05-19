@@ -39,6 +39,7 @@
 #include "d_net.h"
 #include "i_system.h"
 #include "m_argv.h"
+#include "z_zone.h"
 
 #include "doomstat.h"
 
@@ -313,7 +314,7 @@ void I_NetCmd(void) {
 void I_NetCmd(void) {}
 void I_InitNetwork(void) {
 
-  doomcom = malloc(sizeof(*doomcom));
+  doomcom = Z_Malloc(sizeof(*doomcom), PU_LEVSPEC, 0);
   memset(doomcom, 0, sizeof(*doomcom));
   doomcom->ticdup = 1;
   netgame = false;

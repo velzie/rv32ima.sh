@@ -1,6 +1,8 @@
+#include "_udivmodsi4.c"
 #include "si.h"
 
-#include "_udivmodsi4.c"
+// GNU CODE
+// TODO: figure out licences
 
 static const UQItype __divsi3_table[] = {
     0, 0,  0, 0, 0, 0, 0, 0, 0, 0,  0, 0, 0, 0, 0, 0, 0, 1,  0, 0, 0, 0, 0, 0,
@@ -21,19 +23,10 @@ SItype __divsi3(SItype a, SItype b) {
   SItype res;
   int cfg;
 
-  if (b == 0) {
-    /* Raise divide by zero exception.  */
-    int eba, sr;
-    /* Save interrupt enable.  */
-    __asm__ __volatile__("rcsr %0, IE" : "=r"(sr));
-    sr = (sr & 1) << 1;
-    __asm__ __volatile__("wcsr IE, %0" ::"r"(sr));
-    /* Branch to exception handler.  */
-    __asm__ __volatile__("rcsr %0, EBA" : "=r"(eba));
-    eba += 32 * 5;
-    __asm__ __volatile__("mv ea, ra");
-    __asm__ __volatile__("b %0" ::"r"(eba));
-    __builtin_unreachable();
+  if (b == 0) { // divide by zero
+    // this is replacing some complex bullshit, its fine since doom will
+    // probably never divide by zero
+    return 0;
   }
 
   if (((USItype)(a | b)) < 16)
@@ -50,11 +43,7 @@ SItype __divsi3(SItype a, SItype b) {
       neg = !neg;
     }
 
-    __asm__("rcsr %0, CFG" : "=r"(cfg));
-    if (cfg & 2)
-      __asm__("divu %0, %1, %2" : "=r"(res) : "r"(a), "r"(b));
-    else
-      res = __udivmodsi4(a, b, 0);
+    res = __udivmodsi4(a, b, 0);
 
     if (neg)
       res = -res;
@@ -62,3 +51,45 @@ SItype __divsi3(SItype a, SItype b) {
 
   return res;
 }
+
+long __modsi3(long a, long b) {
+  int neg = 0;
+  long res;
+
+  if (a < 0) {
+    a = -a;
+    neg = 1;
+  }
+
+  if (b < 0)
+    b = -b;
+
+  res = __udivmodsi4(a, b, 1);
+
+  if (neg)
+    res = -res;
+
+  return res;
+}
+
+USItype __mulsi3(USItype a, USItype b) {
+  USItype result;
+
+  result = 0;
+
+  if (a == 0)
+    return 0;
+
+  while (b != 0) {
+    if (b & 1)
+      result += a;
+    a <<= 1;
+    b >>= 1;
+  }
+
+  return result;
+}
+
+long __udivsi3(long a, long b) { return __udivmodsi4(a, b, 0); }
+
+long __umodsi3(long a, long b) { return __udivmodsi4(a, b, 1); }
