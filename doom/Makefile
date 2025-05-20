@@ -7,6 +7,7 @@ FILES=				\
 		tables.c			\
 		f_finale.c		\
 		f_wipe.c 		\
+		i_video.c  \
 		d_main.c			\
 		d_items.c		\
 		g_game.c			\

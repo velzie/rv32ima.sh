@@ -726,7 +726,6 @@ void D_DoomMain(void) {
         "                      press enter to continue\n"
         "======================================================================"
         "=====\n");
-    getchar();
   }
 
   // Check and print which version is executed.

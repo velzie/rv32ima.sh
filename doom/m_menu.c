@@ -365,20 +365,6 @@ void M_ReadSaveStrings(void) {
   char name[256];
 
   for (i = 0; i < load_end; i++) {
-    if (M_CheckParm("-cdrom"))
-      sprintf(name, "c:\\doomdata\\" SAVEGAMENAME "%d.dsg", i);
-    else
-      sprintf(name, SAVEGAMENAME "%d.dsg", i);
-
-    handle = open(name, O_RDONLY | 0, 0666);
-    if (handle == -1) {
-      strcpy(&savegamestrings[i][0], EMPTYSTRING);
-      LoadMenu[i].status = 0;
-      continue;
-    }
-    count = read(handle, &savegamestrings[i], SAVESTRINGSIZE);
-    close(handle);
-    LoadMenu[i].status = 1;
   }
 }
 

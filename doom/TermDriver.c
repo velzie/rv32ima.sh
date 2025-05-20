@@ -97,21 +97,6 @@ void CNFGSwapBuffers() { memcpy(drawing_buffer, back_buffer, BUFFER_SIZE); }
 
 void CNFGTackSegment(short x1, short y1, short x2, short y2) {
   printf("implement me!\n");
-  double_t delta_x = x2 - x1;
-  double_t delta_y = y2 - y1;
-  double_t magnitude = sqrt(pow(delta_x, 2) + pow(delta_y, 2)) *
-                       2; // TODO: replace with sqrt aproximation later
-  delta_x /= magnitude;
-  delta_y /= magnitude;
-
-  double_t sample_x = x1;
-  double_t sample_y = y1;
-  while ((short)sample_x != x2 && (short)sample_y != y2) {
-    CNFGTackPixel((short)sample_x, (short)sample_y);
-
-    sample_x += delta_x;
-    sample_y += delta_y;
-  }
 }
 
 void CNFGTackPixel(short x1, short y1) {

@@ -307,6 +307,11 @@ int tolower(int c) {
   return c;
 }
 
+int strcmp(const char *l, const char *r) {
+  for (; *l == *r && *l; l++, r++)
+    ;
+  return *(unsigned char *)l - *(unsigned char *)r;
+}
 int strcasecmp(const char *_l, const char *_r) {
   const unsigned char *l = (void *)_l, *r = (void *)_r;
   for (; *l && *r && (*l == *r || tolower(*l) == tolower(*r)); l++, r++)

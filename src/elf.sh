@@ -51,7 +51,7 @@ parsesectheader() {
     sh_entsize=$(sliceint $1 36)
 }
 
-parseelf() {
+function parseelf {
     if (( 0x$(readhex 4) != 0x7f454c46 )); then
         echo "Not an ELF file"
         return 1
@@ -148,6 +148,7 @@ parseelf() {
                 echo "type $p_type offset $p_offset addr $p_vaddr/$p_paddr filesz $p_filesz memsz $p_memsz flags $p_flags align $p_align"
 
                 for ((j=0; j<p_memsz; j++)); do
+                    printf "\x1b[1G\x1b[2KLoading memory %i%%" $(((j*100)/(p_memsz) + 1))
                     offs=$((p_vaddr+j))
                     if ((j > p_filesz)); then
                         memwritebyte $offs 0

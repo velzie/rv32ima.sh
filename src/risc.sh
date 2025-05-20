@@ -554,11 +554,11 @@ function step {
                     ;;
 				esac
             elif ((funct3 == 0)); then
-                echo "syscall (id:${REGS[17]}) args 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
+                # echo "syscall (id:${REGS[17]}) args 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
 
                 case ${REGS[17]} in
                     64)
-                        echo "write called"
+                        # echo "write called"
                         len=${REGS[12]}
 
 
@@ -568,8 +568,14 @@ function step {
                         done
                         ;;
                     65)
-                        echo "ticks called, IMPLEMENT ME!!"
-                        REGS[11]=1
+                        REGS[11]=$((SECONDS*70))
+                        ;;
+                    66)
+                        echo "read in char called"
+                        IFS= read -r -t 0.001 -n 1 -s holder;
+                        REGS[11]=$(printf "%d" "'$holder")
+                        ;;
+
                     93)
                         echo "exit called! exit code ${REGS[10]}"
                         exit 0

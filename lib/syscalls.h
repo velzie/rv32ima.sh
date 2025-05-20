@@ -10,3 +10,5 @@ static inline void sys_write(const char *str, size_t len) {
                : [str] "r"(str), [len] "r"(len)
                : "a7", "a1", "a2");
 }
+
+int sys_ticks();

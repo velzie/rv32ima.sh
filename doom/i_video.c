@@ -31,15 +31,14 @@
 #include "i_system.h"
 #include "m_argv.h"
 #include "v_video.h"
-#include <errno.h>
 #include <netinet/in.h>
-#include <signal.h>
 #include <stdlib.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <unistd.h>
 
 #include "doomdef.h"
+#include "z_zone.h"
 
 #define POINTER_WARP_COUNTDOWN 1
 
@@ -252,7 +251,8 @@ void I_FinishUpdate(void) {
 
   static uint32_t *bmdata;
   if (!bmdata)
-    bmdata = malloc(SCREENWIDTH * SCREENHEIGHT * OUTSCALE * OUTSCALE * 4);
+    bmdata = Z_Malloc(SCREENWIDTH * SCREENHEIGHT * OUTSCALE * OUTSCALE * 4,
+                      PU_STATIC, 0);
 
   int y, x;
   for (y = 0; y < SCREENHEIGHT; y++) {
