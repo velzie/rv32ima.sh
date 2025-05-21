@@ -274,6 +274,7 @@ int puts(const char *s) {
   sys_write(s, strlen(s));
   return 0;
 }
+int putchar(int c) { sys_write((char *)&c, 1); }
 
 int sys_ticks() {
   int ticks;

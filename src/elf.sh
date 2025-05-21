@@ -7,8 +7,7 @@ function readint {
     b2=$(readn 1 | tohex)
     b3=$(readn 1 | tohex)
     b4=$(readn 1 | tohex)
-    echosafe $((16#$b4$b3$b2$b1))
-
+    echosafe $((0x$b4$b3$b2$b1))
 }
 function readshort {
     b1=$(readn 1 | tohex)

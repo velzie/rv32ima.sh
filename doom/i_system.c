@@ -105,17 +105,7 @@ void I_Quit(void) {
   exit(0);
 }
 
-void I_WaitVBL(int count) {
-#ifdef SGI
-  sginap(1);
-#else
-#ifdef SUN
-  sleep(0);
-#else
-  usleep(count * (1000000 / 700));
-#endif
-#endif
-}
+void I_WaitVBL(int count) {}
 
 void I_BeginRead(void) {}
 
