@@ -285,6 +285,18 @@ int sys_ticks() {
                : "a7", "a1");
   return ticks;
 }
+
+char sys_char() {
+  char c;
+  asm volatile("li a7, 66;"
+               "ecall;"
+               "mv %[c], a1;"
+               : [c] "=r"(c)
+               :
+               : "a7", "a1");
+  return c;
+}
+
 void exit(int i) {
   asm volatile("li a7, 93;"
                "ecall;"

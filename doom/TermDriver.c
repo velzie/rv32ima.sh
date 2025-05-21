@@ -1,6 +1,7 @@
 
 #include "DrawFunctions.h"
 
+#include "../lib/syscalls.h"
 #include "math.c"
 #include <fcntl.h>
 #include <math.h>
@@ -20,7 +21,6 @@ void CNFGGetDimensions(short *x, short *y) {
 
 void CNFGSetupFullscreen(const char *window_name, int screen_no) {}
 
-ssize_t ngetc(char *c) { return read(0, c, 1); }
 void CNFGSetup(const char *window_name, int w, int h) {
   // width = w;
   // height = h;
@@ -35,11 +35,10 @@ void CNFGHandleInput() {
     key = '\0';
   }
 
-  fcntl(0, F_SETFL, O_NONBLOCK); // TODO: replace with bash calls
-  if (ngetc(&key) != 0) {
+  key = sys_char();
+  if (key != 0) {
     HandleKey(key, 0);
   }
-  fcntl(0, F_SETFL, 0);
   // TODO: create some semblance of working in terminal
   // HandleKey(XLookupKeysym(&report.xkey, 0), bKeyDirection);
   // HandleButton(report.xbutton.x, report.xbutton.y, report.xbutton.button,

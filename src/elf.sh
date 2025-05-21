@@ -1,20 +1,21 @@
 
-readchar() {
+function readchar {
     echosafe $((0x$(readn 1 | tohex)))
 }
-readint() {
+function readint {
     b1=$(readn 1 | tohex)
     b2=$(readn 1 | tohex)
     b3=$(readn 1 | tohex)
     b4=$(readn 1 | tohex)
-    echosafe $((0x$b4$b3$b2$b1))
+    echosafe $((16#$b4$b3$b2$b1))
+
 }
-readshort() {
+function readshort {
     b1=$(readn 1 | tohex)
     b2=$(readn 1 | tohex)
     echosafe $((0x$b2$b1))
 }
-readstring() {
+function readstring {
     while true; do
         char=$(readn 1 | tohex)
         if [ "$char" = "00" ]; then
@@ -23,7 +24,7 @@ readstring() {
         echosafe "$char" | fromhex
     done
 }
-eslice() {
+function eslice {
     local start=$2
     local size=$3
     if [ -n "$size" ]; then
@@ -32,13 +33,13 @@ eslice() {
         echosafe "${1:$((start*2))}"
     fi
 }
-sliceint() {
+function sliceint {
     eslice $1 $2 4 | fromhex | readint
 }
-sliceshort() {
+function sliceshort {
     eslice $1 $2 2 | fromhex | readshort
 }
-parsesectheader() {
+function parsesectheader {
     sh_name=$(sliceint $1 0)
     sh_type=$(sliceint $1 4)
     sh_flags=$(sliceint $1 8)

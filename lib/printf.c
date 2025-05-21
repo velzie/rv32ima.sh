@@ -9,7 +9,6 @@
 #include "syscalls.h"
 #include <stdarg.h>
 #include <stddef.h>
-void _putchar(char character);
 
 /**
  * Tiny printf implementation

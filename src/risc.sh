@@ -571,11 +571,12 @@ function step {
                         REGS[11]=$((SECONDS*70))
                         ;;
                     66)
-                        echo "read in char called"
                         IFS= read -r -t 0.001 -n 1 -s holder;
                         REGS[11]=$(printf "%d" "'$holder")
                         ;;
-
+                    67)
+                        sleep REGS[11]
+                        ;;
                     93)
                         echo "exit called! exit code ${REGS[10]}"
                         exit 0
