@@ -1,7 +1,7 @@
 #shellcheck shell=ksh
 export LC_ALL=C
 
-MEMSIZE=80000000
+MEMSIZE=800000
 
 . src/util-pure.sh
 . src/fmt.sh
@@ -20,9 +20,9 @@ dodump() {
     dumpmem | fromhex > dump
 }
 
-parseelf < $1
+parseelf $1 < $1
 
-loadblob $1
+# loadblob $1
 # dtb_size=$(stat -c%s $2)
 # dtb_ptr=$((MEMSIZE - dtb_size - 192)) # 192 is completely arbitrary i just wanted it to match with minirv32ima
 # i=0

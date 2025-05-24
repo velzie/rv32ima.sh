@@ -147,15 +147,23 @@ function parseelf {
                 # wherever i map must be a multiple of p_align
                 echo "type $p_type offset $p_offset addr $p_vaddr/$p_paddr filesz $p_filesz memsz $p_memsz flags $p_flags align $p_align"
 
-                for ((j=0; j<p_memsz; j++)); do
-                    printf "\x1b[1G\x1b[2KLoading memory %i%%" $(((j*100)/(p_memsz) + 1))
-                    offs=$((p_vaddr+j))
-                    if ((j > p_filesz)); then
-                        memwritebyte $offs 0
-                    else
-                        memwritebyte $offs $((0x$(eslice $elfbody $((p_offset+j)) 1)))
-                    fi
-                done
+
+                i=0
+                while read int; do
+                    printf "\x1b[1G\x1b[2KLoading memory %i%%" $(((i*100)/(p_memsz) + 1))
+
+                    offs=$((p_vaddr+i))
+
+                    local align=$((offs%4))
+                    offs=$((offs/4))
+                    local mask=$(( ~(0xFF << (align*8)) ))
+
+                    MEMORY[offs]=$(((MEMORY[offs] & mask) | (int << (align*8)) ))
+
+                    i=$((i + 1))
+                done < <(od -t d1 -An -v -w1 --skip-bytes=$((p_offset)) --read-bytes=$p_filesz "$1")
+                printf "\n"
+
                 echo "loaded PT_LOAD into memory"
             ;;
             1879048195) # PT_RISCV_ATTRIBUTES
