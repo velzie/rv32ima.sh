@@ -1,11 +1,8 @@
-
-declare -a MEMORY
 declare -a REGS
 REGS=()
-MEMORY=()
 PC=0
 INTMAX=$((2**31))
-RAM_IMAGE_OFFSET=0
+RAM_IMAGE_OFFSET=2147483648
 USERMODE=0
 
 function phex {
@@ -36,7 +33,8 @@ function csr_write {
             # echo "WRITING STRING at $val"
             offs=$((val - RAM_IMAGE_OFFSET))
             while true; do
-                byte=$(memreadbyte $offs)
+                memreadbyte "$offs"
+                byte=$rval
                 # echo "btye $byte"
                 if ((byte == 0)); then
                     break
@@ -85,22 +83,6 @@ function handle_control_store {
     esac
 }
 
-reset() {
-    # zero mem and regs
-    for ((i=0; i<32; i++)); do
-        REGS[i]=0
-    done
-    REGS[8]=$((MEMSIZE - 10000))
-    REGS[2]=$((MEMSIZE - 10000))
-
-    for ((i=0; i<$((MEMSIZE/4)); i++)); do
-        MEMORY[i]=0
-        printf "\x1b[1G\x1b[2KReseting memory %i%%" $(((i*100)/(MEMSIZE/4) + 1))
-    done
-    printf "\n"
-
-    # echo "initialized $MEMSIZE bytes to 0"
-}
 
 function init {
     local pc=$1
@@ -126,83 +108,6 @@ function init {
     EXTRAFLAGS=0
 }
 
-function memreadbyte {
-    local offs=$1
-    local align=$((offs%4))
-    offs=$((offs/4))
-
-    echo $(((MEMORY[offs] >> (align*8)) & 0xFF))
-}
-
-function memwritebyte {
-    local offs=$1
-    # if ((offs < 2401136)); then
-    #     echo "HIT"
-    # fi
-    local align=$((offs%4))
-    offs=$((offs/4))
-    local mask=$(( ~(0xFF << (align*8)) ))
-    local new=$2
-
-    MEMORY[offs]=$(((MEMORY[offs] & mask) | (new << (align*8)) ))
-}
-
-function memreadword {
-    local offs=$1
-
-
-    if ((offs%4 == 0)); then
-        # aligned read
-        echo "$((MEMORY[offs/4] & 0xFFFFFFFF))"
-    else
-        b1=$(memreadbyte $offs)
-        b2=$(memreadbyte $((1+$offs)))
-        b3=$(memreadbyte $((2+$offs)))
-        b4=$(memreadbyte $((3+$offs)))
-
-        echo "$(((b4<<24 | b3<<16 | b2<<8 | b1) & 0xFFFFFFFF))"
-    fi
-}
-
-function memreadhalfword {
-    local offs=$1
-
-    b1=$(memreadbyte $offs)
-    b2=$(memreadbyte $((1+offs)))
-
-    echo "$((b2<<8 | b1))"
-}
-
-function memwritehalfword {
-    local offs=$1
-    local new=$2
-    # if ((offs < 2401136)); then
-    #     # echo "hit this THAT"
-    #     exit 1
-    # fi
-    memwritebyte "$offs" "$((new))"
-    memwritebyte "$((1+offs))" "$((new >> 8))"
-}
-
-function memwriteword {
-    local offs=$1
-    # if ((offs < 2401136)); then
-    #     :
-    #     # echo "IGNORING write to $offs at cycle $CYCLEL" >&2
-    #     # return
-    #     # exit 1
-    # fi
-
-    local new=$2
-
-    memwritebyte "$offs" "$((new))"
-    memwritebyte $((1+offs)) $((new >> 8))
-    memwritebyte $((2+offs)) $((new >> 16))
-    memwritebyte $((3+offs)) $((new >> 24))
-}
-
-reset
-
 # echo "-"
 # memwriteword 999964 65836
 # memwriteword 999960 8
@@ -223,16 +128,17 @@ function step {
     if ((PC % 4 != 0)); then
         echo "PC not aligned"
     fi
-    int=$(memreadword $((PC-RAM_IMAGE_OFFSET)))
+
+    memreadword "$((PC-RAM_IMAGE_OFFSET))"
     # i should NOT have to do this something is very wrong
-    int=$((int & 0xFFFFFFFF))
+    int=$((rval & 0xFFFFFFFF))
 
     # dumpstate
 
     # printf "%08x" $int
     # diasm
 
-    local rval=0
+    rval=0
     local rdid=$(((int >> 7) & 0x1f))
 
     opcode=$((int & 0x7f))
@@ -324,38 +230,43 @@ function step {
             imm=$((int >> 20))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
             rsval=$((rsval & 0xFFFFFFFF)) # convert to unsigned uint32
             # memreadword $rsval
             if ((rsval > MEMSIZE - 4)); then
                 # undo the offset
                 rsval=$((rsval+RAM_IMAGE_OFFSET))
                 rsval=$((rsval & 0xFFFFFFFF)) # uint32 it again. logic here is FUCKED! this needs to be fixed
-                rval=$(handle_control_load $rsval)
+                if ((0x10000000 <= rsval && rsval < 0x12000000)); then
+                    rval=$(handle_control_load $rsval)
+                else
+                    echo "memory access out of bounds"
+                    trap=6
+                fi
             else
                 funct3=$(((int >> 12) & 0x7))
                 case $funct3 in
                     $((0x0)))
                         # load byte with sign extension
-                        rval=$(memreadbyte $rsval)
+                        memreadbyte "$rsval"
                         if ((rval > 0x7f)); then rval=$((rval | 0xffffffffffffff00)); fi
                         ;;
                     $((0x1)))
                         # load halfword with sign extension
-                        rval=$(memreadhalfword $rsval)
+                        memreadhalfword "$rsval"
                         if ((rval > 0x7fff)); then rval=$((rval | 0xffffffffffff0000)); fi
                         ;;
                     $((0x2)))
                         # load word
-                        rval=$(memreadword $rsval)
+                        memreadword "$rsval"
                         ;;
                     $((0x4)))
                         # load byte
-                        rval=$(memreadbyte $rsval)
+                        memreadbyte "$rsval"
                         ;;
                     $((0x5)))
                         # load halfword
-                        rval=$(memreadhalfword $rsval)
+                        memreadhalfword "$rsval"
                         ;;
                     *) trap=3;;
                 esac
@@ -369,7 +280,7 @@ function step {
             imm=$(( ( ( int >> 7 ) & 0x1f ) | ( ( int & 0xfe000000 ) >> 20 ) ))
             # sign extend between -2048 and +2047
             if (( imm & 0x800 )); then imm=$((imm | 0xfffffffffffff000)); fi
-            rsval=$((rs1val + imm + RAM_IMAGE_OFFSET))
+            rsval=$((rs1val + imm - RAM_IMAGE_OFFSET))
             rsval=$((rsval & 0xFFFFFFFF)) # convert to unsigned uint32
             rdid=0
             # echo "SW rsval: $(phex $rsval) write $rs2val"
@@ -377,7 +288,12 @@ function step {
                 rsval=$((rsval+RAM_IMAGE_OFFSET))
                 rsval=$((rsval & 0xFFFFFFFF)) # uint32 it again.
 
-                handle_control_store $rsval $rs2val
+                if ((0x10000000 <= rsval && rsval < 0x12000000)); then
+                    handle_control_store $rsval $rs2val
+                else
+                    echo "memory access out of bounds"
+                    trap=6
+                fi
             else
                 funct3=$(((int >> 12) & 0x7))
                 case $funct3 in
@@ -554,28 +470,16 @@ function step {
                     ;;
 				esac
             elif ((funct3 == 0)); then
-                # echo "syscall (id:${REGS[17]}) args 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
+                echo "syscall (id:${REGS[17]}) args 1-6: ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}"
 
                 case ${REGS[17]} in
                     64)
-                        # echo "write called"
+                        echo "write called"
                         len=${REGS[12]}
-
-
                         # dodump
                         for ((i=0; i<len; i++)); do
                             printf "%02x" $(memreadbyte $((REGS[11] + i))) | fromhex
                         done
-                        ;;
-                    65)
-                        REGS[11]=$((SECONDS*70))
-                        ;;
-                    66)
-                        IFS= read -r -t 0.001 -n 1 -s holder;
-                        REGS[11]=$(printf "%d" "'$holder")
-                        ;;
-                    67)
-                        sleep REGS[11]
                         ;;
                     93)
                         echo "exit called! exit code ${REGS[10]}"
@@ -602,7 +506,7 @@ function step {
                 trap=8
                 rval=$((rs1val + RAM_IMAGE_OFFSET))
             else
-                rval=$(memreadword "$rs1val")
+                memreadword "$rs1val"
       #           switch( irmid )
 				# {
 				# 	case 2: //LR.W (0b00010)
@@ -655,7 +559,7 @@ function step {
     esac
 
     if ((trap)); then
-        echo "Segmentation Fault"
+        echo "Segmentation Fault (bash)"
         exit 1
     fi
 
@@ -674,8 +578,8 @@ dumpstate() {
     # printf "fucking pc $PC fucking $(memreadword 1301196) != 29433987"
     printf 'PC: %08x ' $PC
     if ((pc_offset >=0 )) && ((pc_offset < (MEMSIZE - 3))); then
-        ir=$(memreadword $((pc_offset)))
-        ir=$((ir & 0xffffffff))
+        memreadword "$((pc_offset))"
+        ir=$((rval & 0xffffffff))
         printf '[0x%08x] ' $ir
     else
         printf '[xxxxxxxxxx] '
@@ -683,22 +587,4 @@ dumpstate() {
     printf 'Z:%08x ra:%08x sp:%08x gp:%08x tp:%08x t0:%08x t1:%08x t2:%08x s0:%08x s1:%08x a0:%08x a1:%08x a2:%08x a3:%08x a4:%08x a5:%08x ' ${REGS[0]} ${REGS[1]} ${REGS[2]} ${REGS[3]} ${REGS[4]} ${REGS[5]} ${REGS[6]} ${REGS[7]} ${REGS[8]} ${REGS[9]} ${REGS[10]} ${REGS[11]} ${REGS[12]} ${REGS[13]} ${REGS[14]} ${REGS[15]}
     printf 'a6:%08x a7:%08x s2:%08x s3:%08x s4:%08x s5:%08x s6:%08x s7:%08x s8:%08x s9:%08x s10:%08x s11:%08x t3:%08x t4:%08x t5:%08x t6:%08x\n' ${REGS[16]} ${REGS[17]} ${REGS[18]} ${REGS[19]} ${REGS[20]} ${REGS[21]} ${REGS[22]} ${REGS[23]} ${REGS[24]} ${REGS[25]} ${REGS[26]} ${REGS[27]} ${REGS[28]} ${REGS[29]} ${REGS[30]} ${REGS[31]}
     # echo "a0 ${REGS[10]} a2 ${REGS[12]} a5 ${REGS[15]} s0 ${REGS[8]}"
-}
-
-loadblob() {
-
-# echo "starting blob load"
-i=0
-    while read int; do
-        MEMORY[i]=$((int))
-        i=$((i + 1))
-    done < <(od -t d4 -An -v -w4 $1)
-#    content=$(readint)
-#    echo "loaded hex"
-
-#    for ((i=0; i<${#content}; i+=2)); do
-#     # echo "$i ${content:i:2}"
-#      memwritebyte $((i/2)) $(( "0x${content:i:2}" ))
-#    done
-   # echo "blob loaded"
 }
