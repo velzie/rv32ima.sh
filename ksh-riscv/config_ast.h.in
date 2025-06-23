@@ -1,0 +1,312 @@
+// These are all the symbols defined by the legacy Nmake/iffe based build
+// system I could identify. Some of them may no longer be relevant because we
+// have pruned a lot of the code that is not relevant to building the `ksh`
+// and related binaries and libraries. Nonetheless, those symbols are included
+// here just in case we've overlooked something in the transition to the Meson
+// build tool.
+//
+// I am explicitly including all such symbols to help us identify areas where we
+// may be missing a platform feature test. Such symbols will show up as
+// `#undef` comments after the Meson config step has been run to produce the
+// `build/config_ast.h` header. There will be a lot of false positives until
+// we have removed symbols that are known to no longer be relevant.
+//
+// TODO: At some point in the future (e.g., 2019-01-01) irrelevant items in
+// the following list can be removed and the preceding paragraph removed.
+
+// The following symbols are in lexical order within a given prefix; e.g.,
+// `_lib_`. But the prefix groups are not in lexical order. The esoteric
+// prefix groups are listed first. The standard prefix symbols (e.g., `_sys_`,
+// `_hdr_`, etc.) based on tests like `cc.has_function()` or `cc.has_header()`
+// are enumerated later.
+#ifndef _CONFIG_AST_H
+#define _CONFIG_AST_H 1
+
+#include <inttypes.h>
+#include <stdbool.h>
+#include <sys/types.h>
+
+#define _GNU_SOURCE 1
+#define _UNIV_DEFAULT "ucb"  // https://github.com/att/ast/issues/370
+#define _fd_self_dir_fmt "/proc/self/fd/%d%s%s"
+#define _fd_pid_dir_fmt "/proc/%d/fd/%d%s%s"
+
+// These are atypical platform symbols with respect to how they are
+// determined. They are either hardcoded or not determined via the usual
+// platform feature detection and naming conventions.
+#mesondefine DEBUG_BUILD
+#mesondefine MESON_BUILD
+#mesondefine OSNAME
+#mesondefine HOSTTYPE
+#mesondefine BASH_MACHTYPE
+#mesondefine STAT_ST_MTIM
+#mesondefine STAT_ST_MTIMESPEC
+#mesondefine CONF_LIBPATH
+#mesondefine CONF_LIBPREFIX
+#mesondefine CONF_LIBSUFFIX
+#mesondefine N_PROC
+#mesondefine _PROC_PROG
+#mesondefine _DARWIN_C_SOURCE
+#mesondefine _WSL_
+
+#mesondefine _ast_sizeof_int
+#mesondefine _ast_sizeof_long
+#mesondefine _ast_sizeof_off_t
+#mesondefine _ast_sizeof_pointer
+#mesondefine _ast_sizeof_size_t
+#mesondefine _ast_sizeof_int32_t
+#mesondefine _ast_sizeof_wchar_t
+#mesondefine _cmd_tput
+#mesondefine _dll_DYNAMIC
+#mesondefine _DLL_NEXT_PATH
+#mesondefine _may_use_threads
+#mesondefine _more_long_int
+#mesondefine _more_void_int
+#mesondefine _wchar_t_is_int
+#mesondefine _pth_addr2line
+#mesondefine _pth_atos
+#mesondefine _pth_ed
+#mesondefine _pipe_rw
+#mesondefine _socketpair_shutdown_mode
+#mesondefine _pipe_socketpair
+#mesondefine isnanl
+#mesondefine const_const_fts_open
+#mesondefine MAX_SIGNUM
+#mesondefine has_dev_fd
+
+// What follows are all the symbols that should be based on Meson feature
+// tests like `cc.has_header()` and `cc.find_library()`.
+#mesondefine _hdr_dl
+#mesondefine _hdr_dlfcn
+#mesondefine _hdr_dll
+#mesondefine _hdr_execargs
+#mesondefine _hdr_execinfo
+#mesondefine _hdr_filio
+#mesondefine _hdr_float
+#mesondefine _hdr_mach_o_dyld
+#mesondefine _hdr_malloc
+#mesondefine _hdr_math
+#mesondefine _hdr_mman
+#mesondefine _hdr_rld_interface
+#mesondefine _hdr_stdlib
+#mesondefine _hdr_sys_filio
+#mesondefine _hdr_sys_ldr
+#mesondefine _hdr_sys_pstat
+#mesondefine _hdr_sys_ptem
+#mesondefine _hdr_sys_stream
+
+#mesondefine _lib_clock_gettime
+#mesondefine _lib_creat64
+#mesondefine _lib_dllload
+#mesondefine _lib_dlopen
+#mesondefine _lib_eaccess
+#mesondefine _lib_euidaccess
+#mesondefine _lib_faccessat
+#mesondefine _lib_fdopendir
+#mesondefine _lib_fstat64
+#mesondefine _lib_fstatvfs64
+#mesondefine _lib_ftruncate
+#mesondefine _lib_ftruncate64
+#mesondefine _lib_getexecname
+#mesondefine _lib_getrusage
+#mesondefine _lib_gettimeofday
+#mesondefine _lib_lchmod
+#mesondefine _lib_lchmod_fchmodat_fallback
+#mesondefine _lib_loadbind
+#mesondefine _lib_lseek64
+#mesondefine _lib_lstat
+#mesondefine _lib_lstat64
+#mesondefine _lib_memcntl
+#mesondefine _lib_mmap64
+#mesondefine _lib_mkostemp
+#mesondefine _lib_open64
+#mesondefine _lib_opendir
+#mesondefine _lib_pipe2
+#mesondefine _lib_poll
+#mesondefine _lib_posix_spawn
+#mesondefine _lib_posix_spawnattr_setfchdir
+#mesondefine _lib_posix_spawnattr_setsid
+#mesondefine _lib_posix_spawnattr_setumask
+#mesondefine _lib_pstat
+#mesondefine _lib_rewinddir
+#mesondefine _lib_sigqueue
+#mesondefine _lib_socket
+#mesondefine _lib_socketpair
+#mesondefine _lib_spawn
+#mesondefine _lib_spawn_mode
+#mesondefine _lib_spawnve
+#mesondefine _lib_spawnvex
+#mesondefine _lib_statvfs
+#mesondefine _lib_statvfs64
+#mesondefine _lib_strlcat
+#mesondefine _lib_sync
+#mesondefine _lib_syncfs
+#mesondefine _lib_sysinfo
+#mesondefine _lib_truncate64
+#mesondefine _lib_universe
+#mesondefine _lib_utime
+#mesondefine _lib_utimensat
+#mesondefine _lib_expm1l
+#mesondefine _lib_log1pl
+#mesondefine _lib_remainderl
+#mesondefine _lib_log2l
+#mesondefine _lib_tgammal
+#mesondefine _lib_lgammal
+
+#mesondefine _mem_d_fileno_dirent
+#mesondefine _mem_d_ino_dirent
+#mesondefine _mem_d_namlen_dirent
+#mesondefine _mem_d_reclen_dirent
+#mesondefine _mem_d_type_dirent
+
+#mesondefine _mem_base_rel_utsname
+#mesondefine _mem_idnumber_utsname
+#mesondefine _mem_m_type_utsname
+
+#mesondefine _mem_pgroup_inheritance
+
+// These symbols are from src/lib/libast/include/ast_common.h that was
+// generated on a Linux platform by the legacay IFFE mechanism. They may not
+// be correct for other platforms.
+//
+// TODO: Convert these to proper feature tests.
+#define _ast_int8_t long
+#define _ast_intmax_t _ast_int8_t
+#mesondefine _ast_intmax_long
+#define _ast_fltmax_t long double
+
+#mesondefine _has_sighandler_t
+#if !_has_sighandler_t
+typedef void (*sighandler_t)(int);
+#endif
+
+#if DEBUG_BUILD
+// If we're doing a debug build don't have any static (module private) functions.
+// This is needed on most platforms for dladdr() to give us an accurate backtrace.
+#define static_fn
+#else
+#define static_fn static
+#endif
+
+// This is a macro that can be used to silence "unused parameter" warnings from the compiler for
+// functions which need to accept parameters they do not use because they need to be compatible with
+// an interface. It's similar to the Python idiom of doing `_ = param` at the top of a function in
+// the same situation.
+//
+// Do not use this for `param` symbols that have side-effects when evaluated. It should only be used
+// for function parameters. And even then only at the very top of a function definition.
+#define UNUSED(param)  \
+    do {               \
+        (void)(param);   \
+    } while (0)
+
+// If running under the oclint tool try to suppress some platform specific warnings.
+// For example, on macOS many commonly used functions are defined in terms of macros
+// that contain expressions which always evaluate true or false.
+#if _OCLINT_
+
+#undef strcat
+#undef strcpy
+#undef strlcat
+#undef strlcpy
+#undef memcpy
+#undef memmove
+
+#endif  // _OCLINT_
+
+// Types that are needed in many places but which are difficult to define in the header containing
+// the structure definition due to circular includes that would otherwise result.
+typedef struct Namval Namval_t;      // from name.h
+typedef struct Shell_s Shell_t;      // from shell.h
+typedef struct Shbltin_s Shbltin_t;  // from shcmd.h
+typedef struct _shlex_ Lex_t;        // from shlex.h
+typedef struct _mac_ Mac_t;          // from macro.c
+typedef struct pathcomp Pathcomp_t;  // from path.h
+typedef struct edit Edit_t;          // from edit.h
+typedef struct _timer Timer_t;       // from timers.c
+typedef struct Optdisc_s Optdisc_t;  // from option.h
+typedef union Shnode_u Shnode_t;     // from shnodes.h
+typedef int (*Shbltin_f)(int, char **, Shbltin_t *);
+
+//
+// We need to wrap the malloc family of functions. That's because the
+// `job_waitsafe()` function is called from an interrupt context and
+// indirectly calls `malloc()`. See issue #563.
+//
+extern volatile bool vmbusy_flag;
+#define vmbusy() vmbusy_flag
+
+#if !NO_MALLOC_WRAPPERS
+extern void *ast_malloc(size_t size);
+extern void *ast_calloc(size_t count, size_t size);
+extern void *ast_realloc(void *ptr, size_t size);
+extern void ast_free(void *ptr);
+
+#define malloc(s) ast_malloc(s)
+#define calloc(c, s) ast_calloc(c, s)
+#define realloc(p, s) ast_realloc(p, s)
+#define free(p) ast_free(p)
+// This is not used and is not expected to be used so make sure if it is used
+// it causes a problem.
+#define valloc(s) valloc_has_no_ast_wrapper(s)
+#endif  // !NO_MALLOC_WRAPPERS
+
+extern char *sh_getenv(const char *name);
+#define getenv(x) sh_getenv(x)
+
+// We need prototypes for each fallback implementation if the system doesn't
+// provide the function.
+#if !_lib_eaccess
+extern int eaccess(const char *pathname, int mode);
+#endif
+#if !_lib_mkostemp
+extern int mkostemp(char *template, int oflags);
+#endif
+#if !_lib_strlcat
+extern size_t strlcat(char *, const char *, size_t);
+extern size_t strlcpy(char *, const char *, size_t);
+#endif
+#if _lib_lchmod_fchmodat_fallback
+extern int lchmod(const char *path, mode_t mode);
+#endif
+
+// This is useful for printing debugging messages that are tagged with useful
+// information such as the current file, line number, function name, and
+// duration since the previous debug message. You must pass a format string
+// even if it is the empty, "", string.
+extern void _dprintf(const char *fname, int lineno, const char *funcname, const char *fmt, ...);
+#define DPRINTF(fmt, ...) _dprintf(__FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+
+// Debug print of a `struct Value` object.
+//
+// Note that the function prototype uses a `const void*` because we can't use
+// `struct Value*` here as the src/ksh93/include/name.h header which defines
+// it can't be included before this header.
+extern void _dprint_vtp(const char *file_name, int lineno, const char *func_name,
+                        int level, const char *var_name, const void *vp);
+#define DPRINT_VT(vt) _dprint_vtp(__FILE__, __LINE__, __FUNCTION__, 0, #vt, &(vt))
+#define DPRINT_VTP(vtp) _dprint_vtp(__FILE__, __LINE__, __FUNCTION__, 0, #vtp, vtp)
+
+// Debug print of a `struct Namval` object.
+//
+// Note that the function prototype uses a `const void*` because we can't use
+// `struct Namval*` here as the src/ksh93/include/name.h header which defines
+// it can't be included before this header.
+extern void _dprint_nvp(const char *file_name, const int lineno, const char *func_name,
+                        int level, const char *var_name, const void *vp);
+#define DPRINT_NV(nv) _dprint_nvp(__FILE__, __LINE__, __FUNCTION__, 0, #nv, &(nv))
+#define DPRINT_NVP(nvp) _dprint_nvp(__FILE__, __LINE__, __FUNCTION__, 0, #nvp, nvp)
+
+// Debug print of a `struct Namref` object.
+//
+// Note that the function prototype uses a `const void*` because we can't use
+// `struct Namref*` here as the src/ksh93/include/name.h header which defines
+// it can't be included before this header.
+extern void _dprint_nrp(const char *file_name, const int lineno, const char *func_name,
+                        int level, const char *var_name, const void *vp);
+#define DPRINT_NR(nr) _dprint_nrp(__FILE__, __LINE__, __FUNCTION__, 0, #nr, &(nr))
+#define DPRINT_NRP(nrp) _dprint_nrp(__FILE__, __LINE__, __FUNCTION__, 0, #nrp, nrp)
+
+// This can be used to convert an arbitrary nvflag bit mask to a symbolic form.
+extern const char *nvflag_to_syms(uint64_t nvflag);
+#endif

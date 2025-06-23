@@ -1,0 +1,26 @@
+// suppress all instances of varFuncNullUB: "Passing NULL after the last typed
+// argument to a variadic function leads to undefined behaviour." That's
+// because all the places we do this are valid and won't cause problems even
+// on a ILP64 platform because we're careful about using NULL rather than 0.
+varFuncNullUB
+// Suppress the warning about unmatched suppressions. At the moment these
+// warnings are emitted even when removing the suppression comment results in
+// the warning being suppressed. In other words this unmatchedSuppression
+// warnings are false positives.
+unmatchedSuppression
+// There is currently one function which triggers this warning multiple times:
+// src/cmd/ksh93/sh/io.c. Those warnings are all false positives. Suppressing
+// them with inline warnings is too hideous to allow so globally suppress them.
+resourceLeak
+// For the moment we ignore warnings about using non-reentrant functions when
+// a reentrant thread-safe variant exists. Since ksh is single-threaded this
+// isn't a problem although it could be is a third-party plugin created
+// threads that used any of these functions.
+getpwuidCalled
+ttynameCalled
+getloginCalled
+getpwnamCalled
+// The fallbacks.c module is likely to need cppcheck suppressions. But due to
+// how they are parsed, independent of any enclosing `#if` directives, they are
+// also likely to cause warnings like "Unmatched suppression: mktempCalled".
+unmatchedSuppression:../src/lib/libast/misc/fallbacks.c

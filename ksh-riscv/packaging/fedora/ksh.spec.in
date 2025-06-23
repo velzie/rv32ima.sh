@@ -1,0 +1,121 @@
+%global commit #COMMIT#
+%global devel_version_num #DEVEL_VERSION_NUM#
+%global commit_num #COMMIT_NUM#
+%global short_commit #SHORT_COMMIT#
+%global vcs_version #VCS_VERSION#
+
+Name:           ksh
+Summary:        The Original ATT Korn Shell
+URL:            http://www.kornshell.com/
+License:        EPL
+Version:        %{devel_version_num}+git.%{commit_num}.%{short_commit}
+Epoch:          1
+Release:        0%{?dist}
+Source0:        https://github.com/att/ast/archive/%{commit}/%{name}-%{short_commit}.tar.gz
+Source1:        kshcomp.conf
+Source2:        kshrc.rhs
+Source3:        dotkshrc
+
+BuildRequires:  meson
+BuildRequires:  gcc
+BuildRequires:  glibc-devel
+# This package is require by test cases
+# It should be enabled when we start running test cases in package builds
+# BuildRequires:  glibc-langpack-zh
+BuildRequires:  ed
+Conflicts:      pdksh
+Requires(post): grep, coreutils, systemd-units
+Requires(postun): sed
+
+Provides:       /bin/ksh
+
+%description
+KSH-93 is the most recent version of the KornShell by David Korn of
+AT&T Bell Laboratories.
+KornShell is a shell programming language, which is upward compatible
+with "sh" (the Bourne Shell).
+
+%prep
+%autosetup -n ast-%{commit}
+
+%build
+%meson -Dbuild-api-tests=false -Dfallback-version-number=%{vcs_version}
+%meson_build
+
+%install
+%meson_install
+# Allow switching between different ksh implementations (for e.g. mksh) through alternatives.
+mv %{buildroot}/%{_bindir}/ksh %{buildroot}/%{_bindir}/ksh93
+# http://mesonbuild.com/Release-notes-for-0-49-0.html#manpages-are-no-longer-compressed-implicitly
+# meson 0.49 does not compress man pages
+if [[ -e  %{buildroot}/%{_mandir}/man1/ksh.1.gz ]]
+then
+    mv %{buildroot}/%{_mandir}/man1/ksh.1.gz %{buildroot}/%{_mandir}/man1/ksh93.1.gz
+else
+    mv %{buildroot}/%{_mandir}/man1/ksh.1 %{buildroot}/%{_mandir}/man1/ksh93.1
+fi
+
+install -p -D -m 644 %{SOURCE1} %{buildroot}%{_sysconfdir}/binfmt.d/kshcomp.conf
+install -p -m 644 %{SOURCE2} %{buildroot}%{_sysconfdir}/kshrc
+install -p -D -m 644 %{SOURCE3} %{buildroot}%{_sysconfdir}/skel/.kshrc
+
+ln -s %{_bindir}/ksh %{buildroot}%{_bindir}/rksh
+
+%post
+for s in /bin/ksh /bin/rksh /usr/bin/ksh /usr/bin/rksh 
+do
+  if [ ! -f /etc/shells ]; then
+        echo "$s" > /etc/shells
+  else
+        if ! grep -q '^'"$s"'$' /etc/shells ; then
+                echo "$s" >> /etc/shells
+        fi
+  fi
+done
+
+/bin/systemctl try-restart systemd-binfmt.service >/dev/null 2>&1 || :
+
+%{_sbindir}/alternatives --install /bin/ksh ksh \
+                /bin/ksh93 50 \
+        --slave %{_mandir}/man1/ksh.1.gz ksh-man \
+                %{_mandir}/man1/ksh93.1.gz
+
+# If not symlink we are updating ksh where there was no alternatives before
+# so replace with symlink and set alternatives
+if [ ! -L /bin/ksh ]; then
+        %{_sbindir}/alternatives --auto ksh
+        ln -sf /etc/alternatives/ksh /bin/ksh
+        ln -sf /etc/alternatives/ksh-man %{_mandir}/man1/ksh.1.gz
+fi
+
+%preun
+# Do not remove ksh from alternatives on upgrades
+if [ $1 -eq 0 ]; then
+    %{_sbindir}/alternatives --remove ksh /bin/ksh93
+fi
+
+%postun
+for s in /bin/ksh /bin/rksh /usr/bin/ksh /usr/bin/rksh 
+do
+  if [ ! -f $s ]; then
+	sed -i '\|^'"$s"'$|d' /etc/shells
+  fi
+done
+
+# ksh-20120801-250 did not use alternatives, so while upgrading ensure that
+# alternatives are set correctly
+%triggerpostun -- ksh < 1:2020.0.0-0.1
+%{_sbindir}/alternatives --auto ksh
+
+%files
+%doc src/cmd/ksh93/COMPATIBILITY src/cmd/ksh93/RELEASE src/cmd/ksh93/TYPES
+# LICENSE file is missing, temporarily?
+%{_bindir}/ksh93
+%{_bindir}/rksh
+%{_bindir}/shcomp
+%{_mandir}/man1/ksh93.1*
+%config(noreplace) %{_sysconfdir}/skel/.kshrc
+%config(noreplace) %{_sysconfdir}/kshrc
+%config(noreplace) %{_sysconfdir}/binfmt.d/kshcomp.conf
+
+%changelog

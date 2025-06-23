@@ -1,0 +1,46 @@
+# We don't use posix_spawn() by default due to a race condition involving
+# setting the terminal foreground process group. If you want to risk failures
+# due to that scenario build with `meson -Duse-spawn=true`.
+#
+# See https://github.com/att/ast/issues/468.
+option('use-spawn', type : 'boolean', value : false)
+
+# Enable this when running unit tests.
+option('unittest', type : 'boolean', value : false)
+
+# This build symbol used to be named SHOPT_TIMEOUT. It was renamed when it
+# stopped being used to conditionally compile segments of code. It defines
+# the default, and maximum, read timeout value (see the `TMOUT` shell var).
+#
+# TODO: Use the following definition when we can count on Meson 0.45 being
+# available on the platforms we care about. For the moment we're stuck with
+# Meson 0.44.
+# option('read-timeout', type : 'integer', min : 0, value : 0)
+#
+option('read-timeout', type : 'string', value : '0')
+
+# This build symbol used to be named SHOPT_AUDITFILE. It was renamed when it
+# stopped being used to conditionally compile segments of code. It defines
+# the default pathname for recording shell auditable events.
+#
+option('audit-file', type : 'string', value : '/etc/ksh_audit')
+
+# To disable building api tests, set build-api-tests option to false:
+#   meson -Dbuild-api-tests=false
+option('build-api-tests', type : 'boolean', value : true)
+
+# To build api tests only, set build-api-tests-only option to true:
+#   meson -Dbuild-api-tests-only=true
+option('build-api-tests-only', type : 'boolean', value : false)
+
+# This number is used when git is not available
+#   meson -Dfallback-version-number='x.y.z'
+option('fallback-version-number', type : 'string', value : '2020.0.0')
+
+# To build with support for ASAN (AddressSanitizer:
+#   meson -DASAN=true
+option('ASAN', type : 'boolean', value : false)
+
+# Enable this in CI environments to cause compiler warnings to be treated
+# as errors.
+option('warnings-are-errors', type : 'boolean', value : false)

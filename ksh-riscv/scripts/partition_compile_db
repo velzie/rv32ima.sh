@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+#
+# Usage: partition_compile_commands input.json output.json defs source_file...
+#
+# This filters the contents of the input.json compile commands database to
+# output.json including only those source modules listed on our command line.
+#
+import json
+import sys
+
+input_build_db = sys.argv[1]
+output_build_db = sys.argv[2]
+files_to_lint = set(sys.argv[3:])
+source_files = []
+
+input_json = json.load(open(input_build_db, mode='r'))
+output_json = []
+for file_item in input_json:
+    if file_item["file"] in files_to_lint:
+        output_json.append(file_item)
+        source_files.append(file_item["file"])
+        files_to_lint.remove(file_item["file"])
+
+json.dump(output_json, open(output_build_db, mode='w'), indent=4)
+if files_to_lint:
+    # There were source files for which we could not find a build rule.
+    for f in sorted(files_to_lint):
+        if f.startswith("../"):
+            f = f[3:]  # change "../src/..." to "src/..."
+        print("WARN: No build rule so ignoring file: {!r}".format(f),
+              file=sys.stderr)
+
+for f in sorted(source_files):
+    print(f)
+
+sys.exit(0)

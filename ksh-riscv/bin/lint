@@ -1,0 +1,228 @@
+#!/usr/bin/env ksh
+#
+# Usage: bin/lint [all | directory_or_filename...]
+#
+# Run the source through various lint detection tools. If invoked with `-all` then all the
+# src/cmd/ksh93 source files will be linted. If invoked with one or more path names they
+# will be linted. If the pathname is a directory all *.c files inside it will be linted.
+# Otherwise any uncommitted source files are linted. If there is no uncommitted change
+# then the files in the most recent commit are linted.
+#
+
+# shellcheck disable=SC2207
+# Note: Disable SC2207 warning for the entire file since setting IFS to just
+# newline makes it safe to handle file names with spaces.
+IFS=$'\n'
+
+typeset all=no
+readonly cppchecks=warning,performance,portability,information,missingInclude
+typeset enable_global_analysis=""
+typeset lint_args=""
+typeset -a c_files=()
+typeset -a files=()
+readonly os_name=$(uname -s)
+readonly machine_type=$(uname -m)
+
+if [[ ! -d build || ! -f build/compile_commands.json ]]
+then
+    echo "You need to run \`meson\` to configure the build before we can lint the source." >&2
+    exit 1
+fi
+
+# Deal with any CLI flags.
+while [[ "${#}" -ne 0 ]]
+do
+    case "${1}" in
+        --all | all )
+            all=yes
+            enable_global_analysis='-enable-global-analysis'
+            ;;
+        * )
+            break
+            ;;
+    esac
+    shift
+done
+
+if [[ ${all} == yes && "${#}" -ne 0 ]]
+then
+    echo "Unexpected arguments: '${1}'" >&2
+    exit 1
+fi
+
+# Figure out which files to lint.
+if [[ ${all} == yes ]]
+then
+    files=( $(find src -name "*.c") )
+elif [[ "${#}" -ne 0 ]]
+then
+    for next_file in "$@"
+    do
+        if [[ -f ${next_file} ]]
+        then
+            files+=( "${next_file}" )
+        elif [[ -d ${next_file} ]]
+        then
+            files+=( $(find "${next_file}" -name "*.c") )
+        fi
+    done
+else
+    # We haven't been asked to lint all the source or specific files. If there are uncommitted
+    # changes lint those, else lint the files in the most recent commit.  Select (cached files)
+    # (modified but not cached, and untracked files).
+    files=( $(git diff-index --cached HEAD --name-only) )
+    files+=( $(git ls-files --exclude-standard --others --modified) )
+    if [[ "${#files[@]}" -eq 0 ]]
+    then
+        # No pending changes so lint the files in the most recent commit.
+        files=( $(git diff-tree --no-commit-id --name-only -r HEAD) )
+    fi
+fi
+
+# Filter out non C source files.
+for file in "${files[@]}"
+do
+    case "${file}" in
+        *.c )
+            if [[ -f "${file}" ]]
+            then
+                c_files+=( "../${file}" )
+            fi
+            ;;
+    esac
+done
+
+cd build || exit 1
+
+# We need to limit the source modules to those for which we have build rules. We also need to
+# produce a version of the compile_commands.json file that only contains the files to be linted.
+# Finally, we need the `-D` and `-I` flags from the build rule for the IWYU and cppcheck programs.
+readonly project_file="compile_commands_partial.json"
+c_files=( $(../scripts/partition_compile_db compile_commands.json ${project_file} "${c_files[@]}") )
+if [[ "${#c_files[@]}" -eq 0 ]]
+then
+    echo >&2
+    echo 'WARNING: No C files to check' >&2
+    echo >&2
+    exit 1
+fi
+
+# On some platforms (e.g., macOS) oclint can't find the system headers. So ask the real compiler
+# to tell us where they are and pass that information to oclint.
+#
+# Passing this path via the compiler `-isystem` flag also keeps oclint from complaining about
+# problems with the system headers.
+#
+# We also need this value for cppcheck to find some system headers again, on platforms like macOS,
+# where the system headers aren't found at /usr/include.
+readonly system_hdrs="$(clang -H -E ../etc/hdrs.c 2>&1 |
+    sed -ne 's,^\. \(.*\)/.*$,\1,p' -e '1,$!t' -e 'q')"
+
+# On macOS the system headers used by `clang` may not be rooted at /usr/include.
+lint_args=( -I. -I"${system_hdrs}" )
+
+# This is needed with clang on macOS. Without it `cppcheck` fails with
+# `#error Unsupported architecture` from `#include <sys/cdefs.h>`.
+if [[ "${machine_type}" == "x86_64" ]]
+then
+    lint_args+=(  -D__x86_64__ -D__LP64__ )
+fi
+
+if command -v include-what-you-use > /dev/null
+then
+    echo
+    echo ========================================
+    echo Running IWYU
+    echo ========================================
+    typeset mapping_file=""
+    case "${os_name}" in
+        Darwin | FreeBSD | OpenBSD )
+            mapping_file="../etc/iwyu.bsd.map"
+            ;;
+        Linux | CYGWIN* )
+            mapping_file="../etc/iwyu.linux.map"
+            ;;
+    esac
+set +x
+    for c_file in "${c_files[@]}"
+    do
+        if [[ "${mapping_file}" != "" ]]
+        then
+            # shellcheck disable=SC2046
+            include-what-you-use -Xiwyu --transitive_includes_only \
+                -Xiwyu --mapping_file="${mapping_file}" \
+                --std=c99 -Wno-expansion-to-defined -Wno-nullability-completeness \
+                "${lint_args[@]}" $(../scripts/extract_flags "${project_file}" "${c_file}") \
+                "${c_file}" 2>&1 | sed \
+                    -e 's,^(\.\./,(,' -e 's,^\.\./,,' \
+                    -e '/^(.* has correct #includes/d'
+        else # hope for the best
+            # shellcheck disable=SC2046
+            include-what-you-use -Xiwyu --transitive_includes_only \
+                --std=c99 -Wno-expansion-to-defined -Wno-nullability-completeness \
+                "${lint_args[@]}" $(../scripts/extract_flags "${project_file}" "${c_file}") \
+                "${c_file}" 2>&1 | sed \
+                    -e 's,^(\.\./,(,' -e 's,^\.\./,,' \
+                    -e '/^(.* has correct #includes/d'
+        fi
+    done
+set +x
+fi
+
+if command -v cppcheck > /dev/null
+then
+    echo
+    echo ========================================
+    echo Running cppcheck
+    echo ========================================
+    # The stderr to stdout redirection is because cppcheck, incorrectly IMHO, writes its
+    # diagnostic messages to stderr. Anyone running this who wants to capture its output will
+    # expect those messages to be written to stdout.
+    readonly cn="$(tput sgr0 | sed -e 's/'$'\xf''$//')"
+    readonly cb="$(tput bold)"
+    readonly cu="$(tput smul)"
+    readonly cm="$(tput setaf 125)"
+    readonly cbrm="$(tput setaf 201)"
+    readonly template="[${cb}${cu}{file}${cn}${cb}:{line}${cn}] ${cbrm}{severity}${cm} ({id}):${cn}\\n {message}"
+
+    # It should be possible to use --project=$project_file but cppcheck 1.82 doesn't correctly
+    # extract the -D and -I flags. So we do it ourselves and pass the flags on the cppcheck
+    # command line.
+    for c_file in "${c_files[@]}"
+    do
+        flags=( $(../scripts/extract_flags ${project_file} "${c_file}") )
+        cppcheck "${lint_args[@]}" \
+                 "${flags[@]}" -D_CPPCHECK \
+                 -q --verbose --std=c99 --language=c \
+                 --suppress=missingIncludeSystem --inline-suppr \
+                 --enable="${cppchecks}" --rule-file=../.cppcheck.rules \
+                 --template="${template}" \
+                 --suppressions-list=../.cppcheck.suppressions "${c_file}" 2>&1 |
+            sed -e 's,^\[\([^.]*\)\.\./,[\1,'
+    done
+fi
+
+if command -v oclint > /dev/null
+then
+    echo
+    echo ========================================
+    echo Running oclint
+    echo ========================================
+    # A copy of this config file has to be in the CWD (the Meson build dir).
+    if [[ -f ../.oclint ]]
+    then
+        cp ../.oclint .
+    fi
+
+    # Include `-D_FORTIFY_SOURCE=0` because we don't want constant expressions
+    # introduced by the use of macro implementations of functions like
+    # `snprintf()` to cause spurious warnings when security fortification is
+    # in effect. Since we're just doing static analysis the run-time checks
+    # introduced by the indirections the _FORTIFY_SOURCE mechanism introduces
+    # serve no purpose.
+    oclint -p "${PWD}" -enable-clang-static-analyzer ${enable_global_analysis} \
+        -extra-arg="-D_OCLINT_" \
+        -extra-arg="-D_FORTIFY_SOURCE=0" \
+        -extra-arg="-isystem" -extra-arg="${system_hdrs}" "${c_files[@]}" 2>&1 |
+        sed -e 's,^\.\./,,'
+fi
