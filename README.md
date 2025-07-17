@@ -12,3 +12,11 @@ I love bash! see [minecraft.sh](https://github.com/velzie/minecraft.sh) or [asm.
 kind of? not really
 
 I got buildroot to load and it hits the first banner after ~30 minutes, but doesn't progress much further
+
+Here's an example of it printing the fibonacci sequence from a C program compiled to risc-v
+<img width="1284" height="306" alt="image" src="https://github.com/user-attachments/assets/9d78c4a0-1ac6-4563-b045-9f46281c18a7" />
+
+### try yourself
+- clone repo
+- run `make` to compile buildroot and the baremetal programs
+- `bash src/runbin.sh baremetal/baremetal.bin sixtyfourmb.dtb` to run the c program, `bash src/runbin.sh buildroot/output/images/Image sixtyfourmb.dtb` to run buildroot
