@@ -1,7 +1,6 @@
 # rv32ima.sh
 A risc-v emulator running in pure shell script
 
-heavily based on [mini-rv32ima](https://github.com/cnlohr/mini-rv32ima)
 ### what
 Bash and posix shells are fully turing complete! Typically the shell is used to call external commands, but even if you limit yourself to just builtins, (`echo`, `printf`, `read`, `return`) it's still possible to emulate a full RISC-V cpu running at a decent clock speed!
 
